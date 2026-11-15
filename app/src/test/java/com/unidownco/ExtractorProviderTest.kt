@@ -122,7 +122,6 @@ class ExtractorProviderTest {
         """.trimIndent()
 
         val ytDlpProvider = YtDlpExtractorProvider(
-            companionServiceAvailable = true,
             jsonExtractor = { mockJson }
         )
 

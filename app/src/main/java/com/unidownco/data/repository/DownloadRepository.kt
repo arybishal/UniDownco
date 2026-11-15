@@ -17,6 +17,7 @@ import com.unidownco.domain.models.VideoExtractionInfo
 import com.unidownco.engine.downloader.DownloadEngine
 import com.unidownco.engine.verifier.AndroidMediaVerifier
 import com.unidownco.engine.verifier.MediaVerifier
+import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,11 +88,17 @@ class DownloadRepository(
         )
 
         val downloadId = downloadDao.insertDownload(entity)
-        startDownload(downloadId, selectedFormat, targetFile, info.title)
+        startDownload(downloadId, selectedFormat, targetFile, info.title, info.url)
         return downloadId
     }
 
-    private fun startDownload(downloadId: Long, format: FormatOption, targetFile: File, title: String) {
+    private fun startDownload(
+        downloadId: Long,
+        format: FormatOption,
+        targetFile: File,
+        title: String,
+        originalUrl: String? = null
+    ) {
         // Cancel existing job if running
         activeJobs[downloadId]?.cancel()
 
@@ -100,7 +107,12 @@ class DownloadRepository(
                 downloadDao.updateStatus(downloadId, DownloadStatus.DOWNLOADING.name)
                 DownloadForegroundService.start(context, downloadId, title)
 
-                val result = downloadEngine.downloadStream(format, targetFile) { progress ->
+                val result = downloadEngine.downloadStream(
+                    format = format,
+                    destinationFile = targetFile,
+                    originalUrl = originalUrl,
+                    downloadId = downloadId
+                ) { progress ->
                     downloadDao.updateProgress(
                         id = downloadId,
                         downloadedBytes = progress.downloadedBytes,
@@ -153,6 +165,9 @@ class DownloadRepository(
     }
 
     suspend fun pauseDownload(id: Long) {
+        try {
+            YoutubeDL.getInstance().destroyProcessById("dl_$id")
+        } catch (_: Exception) {}
         activeJobs[id]?.cancel()
         activeJobs.remove(id)
         downloadDao.updateStatus(id, DownloadStatus.PAUSED.name)
@@ -177,10 +192,13 @@ class DownloadRepository(
             estimatedSizeBytes = entity.fileSizeBytes
         )
 
-        startDownload(id, format, targetFile, entity.title)
+        startDownload(id, format, targetFile, entity.title, entity.url)
     }
 
     suspend fun cancelDownload(id: Long) {
+        try {
+            YoutubeDL.getInstance().destroyProcessById("dl_$id")
+        } catch (_: Exception) {}
         activeJobs[id]?.cancel()
         activeJobs.remove(id)
         downloadDao.updateStatus(id, DownloadStatus.CANCELLED.name)
@@ -195,6 +213,9 @@ class DownloadRepository(
 
     suspend fun deleteDownload(id: Long) {
         val entity = downloadDao.getDownloadById(id)
+        try {
+            YoutubeDL.getInstance().destroyProcessById("dl_$id")
+        } catch (_: Exception) {}
         activeJobs[id]?.cancel()
         activeJobs.remove(id)
 
@@ -204,6 +225,8 @@ class DownloadRepository(
                 storageManager.deleteFile("${entity.downloadPath}.part")
                 storageManager.deleteFile("${entity.downloadPath}.video.part")
                 storageManager.deleteFile("${entity.downloadPath}.audio.part")
+                val parent = File(entity.downloadPath).parentFile
+                parent?.listFiles { _, name -> name.startsWith("ytdl_$id") }?.forEach { it.delete() }
             }
             downloadDao.deleteById(id)
         }

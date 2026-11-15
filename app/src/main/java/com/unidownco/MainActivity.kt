@@ -74,11 +74,11 @@ class MainActivity : ComponentActivity() {
         if (intent == null) return
         if (Intent.ACTION_SEND == intent.action && "text/plain" == intent.type) {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            val autoDownload = intent.getBooleanExtra("auto_download", settingsViewModel.uiState.value.autoDownloadOnShare)
+            android.util.Log.i("MainActivity", "handleShareIntent: sharedText=$sharedText, autoDownload=$autoDownload")
             if (!sharedText.isNullOrBlank()) {
                 homeViewModel.onUrlChanged(sharedText)
-                if (settingsViewModel.uiState.value.autoDownloadOnShare) {
-                    homeViewModel.onStartAnalysis()
-                }
+                homeViewModel.onStartAnalysis(targetUrl = sharedText, autoDownload = autoDownload)
             }
         }
     }

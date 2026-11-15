@@ -14,14 +14,15 @@ class UniversalExtractorRegistry(
     customProviders: List<ExtractorProvider>? = null
 ) {
     private val nativeProvider = NativeExtractorProvider()
+    private val ytDlpProvider = YtDlpExtractorProvider()
     private val providers = mutableListOf<ExtractorProvider>()
 
     init {
         if (customProviders != null) {
             providers.addAll(customProviders)
         } else {
+            providers.add(ytDlpProvider)
             providers.add(nativeProvider)
-            providers.add(YtDlpExtractorProvider())
         }
         providers.sortByDescending { it.priority }
     }

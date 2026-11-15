@@ -14,5 +14,9 @@ enum class Platform(val displayName: String, val identifier: String) {
         fun fromIdentifier(id: String): Platform {
             return values().firstOrNull { it.identifier.equals(id, ignoreCase = true) } ?: GENERIC
         }
+
+        fun fromUrl(url: String): Platform {
+            return UrlValidator.validateAndExtract(url).platform
+        }
     }
 }

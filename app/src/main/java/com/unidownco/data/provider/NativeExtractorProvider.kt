@@ -30,7 +30,7 @@ class NativeExtractorProvider(
 
     override val providerId: String = "native"
     override val displayName: String = "UniDownco Native Extractor"
-    override val priority: Int = 100
+    override val priority: Int = 80
     override val isAvailable: Boolean = true
 
     override fun getCapabilities(platform: Platform): Set<ExtractionCapability> {

@@ -2,15 +2,36 @@
 
 ## Supported Platforms & Extraction Protocols
 
-| Platform | Extraction Strategy | Formats Supported | Audio Merging |
-| :--- | :--- | :--- | :--- |
-| **YouTube** | Innertube Android Client API + oembed | 1080p, 720p, 480p, 360p (MP4/WebM) | Separate adaptive tracks supported |
-| **TikTok** | Web embed & video address metadata | Direct MP4 (Watermark-free) | Combined audio/video |
-| **Instagram** | Reel/post captioned embed endpoints | Direct 1080p MP4 | Combined audio/video |
-| **Reddit** | JSON API (`.json`) & `v.redd.it` | 1080p, 720p, 480p fallback MP4 | `DASH_AUDIO_128.mp4` paired |
-| **X / Twitter** | Syndication API (`cdn.syndication.twimg.com`) | Highest bitrate MP4 variant | Combined audio/video |
-| **Facebook** | Page scrapers & OpenGraph video tags | HD (1080p) and SD (720p) MP4 | Combined audio/video |
-| **Generic** | Direct URL extension & OpenGraph meta tags | MP4, WebM, MKV | Standard container |
+UniDownco utilizes a prioritized multi-provider strategy (`YtDlpExtractorProvider` at Priority 100 with `NativeExtractorProvider` at Priority 80):
+
+| Platform | Primary Engine | Fallback Strategy | Formats Supported | Audio/Video Merging |
+| :--- | :--- | :--- | :--- | :--- |
+| **YouTube** | yt-dlp (Innertube + cipher deciphering) | Innertube Android Client API + oEmbed | Up to 4K/60fps (MP4/WebM) | Auto-paired adaptive streams merged via FFmpeg |
+| **TikTok** | yt-dlp (Signature bypass) | Web embed & video address metadata | Direct watermark-free MP4 | Combined audio/video |
+| **Instagram** | yt-dlp (Embed + session handling) | Reel/post captioned embed endpoints | Direct 1080p MP4 | Combined audio/video |
+| **Reddit** | yt-dlp (DASH parser) | JSON API (`.json`) & `v.redd.it` | 1080p, 720p, 480p fallback MP4 | `DASH_AUDIO` paired and merged |
+| **X / Twitter** | yt-dlp (GraphQL/syndication) | Syndication API (`cdn.syndication.twimg.com`) | Highest bitrate MP4 variant | Combined audio/video |
+| **Facebook** | yt-dlp (GraphQL video) | Page scrapers & OpenGraph video tags | HD (1080p) and SD (720p) MP4 | Combined audio/video |
+| **Generic** | Native Extractor | Direct URL extension & OpenGraph meta tags | MP4, WebM, MKV | Standard container |
+
+---
+
+## Download Execution & Routing
+
+UniDownco features a **Dual-Mode Download Engine**:
+
+1. **Direct HTTP Range Streamer (OkHttp)**:
+   - Used for direct static MP4/WebM URLs.
+   - High throughput with 64KB buffers.
+   - Resumable chunked downloads via `Range: bytes=X-` headers and `.part` files.
+   - Lossless elementary stream remuxing via `MediaStreamMuxer` (native Android `MediaExtractor` + `MediaMuxer`).
+
+2. **yt-dlp Embedded Execution Engine (`youtubedl-android`)**:
+   - Used for social platforms requiring complex headers, DASH/HLS manifests, or dynamic token generation.
+   - Executes native `yt-dlp` backed by CPython and FFmpeg native shared libraries.
+   - Formats selected via `-f {format_id}+bestaudio/best` and merged automatically (`--merge-output-format mp4`).
+   - Monitored with live regex progress and speed parsing (`[download] XX% of YY at ZZ`).
+   - Integrated with process destruction on cancellation or pause.
 
 ---
 
@@ -28,7 +49,9 @@
    UniversalExtractorRegistry (Detect platform)
           │
           ▼
-   VideoExtractor.extract(url) ──(Failure)──► [Retry / Error]
+   Provider Priority Chain:
+   1. YtDlpExtractorProvider (Priority 100)
+   2. NativeExtractorProvider (Priority 80)
           │
        (Success)
           │
@@ -41,18 +64,22 @@
           ▼
    DownloadForegroundService.start() (Status: DOWNLOADING)
           │
+     [Direct MP4?]
+     ├─ Yes ──► OkHttp Range Downloader
+     └─ No  ──► YoutubeDL Embedded Runner
+          │
    ┌──────┴─────────────────────────────────┐
    │                                        │
    ▼                                        ▼
 [Pause] ──► Status: PAUSED             [Cancel] ──► Status: CANCELLED
    │                                        │
    ▼                                        ▼
-[Resume] (Range: bytes=X-)              Delete .part file
+[Resume] (Range: bytes=X-)              Delete .part file / terminate process
    │
    ▼
 [Download Completed]
    ├── Verify byte length > 0
-   ├── Rename .part -> .mp4
+   ├── AndroidMediaVerifier (validate video/audio tracks)
    ├── Room: Mark COMPLETED
    ├── Export to MediaStore: Movies/UniversalHDR/
    └── Stop Foreground Service

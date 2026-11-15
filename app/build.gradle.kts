@@ -62,6 +62,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -94,6 +97,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+
+    // yt-dlp & FFmpeg engine
+    implementation(libs.youtubedl.library)
+    implementation(libs.youtubedl.ffmpeg)
 
     // Unit Testing
     testImplementation(libs.junit)

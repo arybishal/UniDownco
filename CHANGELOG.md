@@ -2,6 +2,35 @@
 
 All notable changes to the UniDownco project will be documented in this file.
 
+## [1.0.3-step1.3] - 2026-11-15
+### Added
+- **Operational yt-dlp & FFmpeg Runtime Integration**:
+  - Integrated `io.github.junkfood02.youtubedl-android:library:0.18.1` and `ffmpeg:0.18.1` bundling CPython (`libpython.so`), QuickJS (`libqjs.so`), and FFmpeg (`libffmpeg.so`).
+  - Configured `packaging.jniLibs.useLegacyPackaging = true` in Gradle build configuration to extract native libraries safely, strictly complying with Android 16's W^X memory execution enforcement.
+  - Added comprehensive `THIRD_PARTY_NOTICES.md` documenting GPL-3.0 copyleft obligations, source availability, and third-party dependencies (yt-dlp, FFmpeg, Python, QuickJS, OkHttp, Room).
+- **Engine Lifecycle & In-App Dynamic Updater**:
+  - Created `YtDlpEngineManager` providing thread-safe background initialization (`init` in `UniDownApplication.onCreate`) and live engine capability verification.
+  - Implemented dynamic upstream yt-dlp updates directly from within the app via `YoutubeDL.updateYaml(...)`.
+- **Primary yt-dlp Extractor Provider with Multi-Format Mapping**:
+  - Upgraded `YtDlpExtractorProvider` to priority 100 to serve as the primary extraction pipeline for social platforms (YouTube, TikTok, Instagram, Reddit, X/Twitter, Facebook).
+  - Automatically translates yt-dlp format trees, pairings of separate adaptive video and audio tracks, duration, thumbnail, and author metadata into UniDownco domain models (`VideoExtractionInfo`, `FormatOption`).
+  - Adjusted `NativeExtractorProvider` to priority 80 to act as seamless zero-dependency fallback.
+- **Dual-Strategy Resilient Download Engine**:
+  - Direct static MP4 files continue utilizing high-speed chunked streaming via OkHttp with HTTP Range resume support (`Range: bytes=X-`).
+  - Social media and adaptive DASH/HLS streams route through `YoutubeDL.getInstance().execute(...)` with format selection (`-f {format_id}+bestaudio/best`), MP4 remuxing (`--merge-output-format mp4`), and live regex throughput/progress parsing.
+  - Bound cancellation and pause to `YoutubeDL.getInstance().destroyProcessById(...)`.
+- **System Share Sheet & Auto-Download Automation**:
+  - Configured `MainActivity` with `android:launchMode="singleTask"` and intent receiver for `android.intent.action.SEND`.
+  - Added auto-download parameter to automatically analyze, select optimal format, and queue downloads when shared from external social media apps.
+- **Settings Screen Runtime Management**:
+  - Added "EXTRACTION & MEDIA RUNTIME" card in `SettingsScreen` showing yt-dlp version, target device architecture (`arm64-v8a`), and interactive "UPDATE YT-DLP RUNTIME" action.
+- **Real-Device Verification (Xiaomi Redmi Note 25062RN2DA, Android 16 / API 36)**:
+  - Cold startup verification: `yt-dlp and FFmpeg initialized successfully in 112ms`.
+  - Direct MP4 download verified (`flower.mp4`, 1,128,375 bytes, verified by `AndroidMediaVerifier` and exported to `/sdcard/Movies/UniversalHDR/`).
+  - Real YouTube video download verified: `Me at the zoo` (`jNQXAC9IVRw`), 575,740 bytes, validated with `ffprobe` (H.264 320x240 @ 15fps, Opus 48kHz audio, ISO MP4 container).
+  - Share intent automation verified via ADB.
+  - All 26 unit tests passed (`testDebugUnitTest`).
+
 ## [1.0.2-step1.2] - 2026-11-15
 ### Added
 - **Safe Non-Destructive Room Migration**:

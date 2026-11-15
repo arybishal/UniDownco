@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -193,6 +195,65 @@ fun SettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("CLEAR", style = AppTypography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Extraction & Media Runtime
+            item {
+                UniCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "EXTRACTION & MEDIA RUNTIME",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Text(
+                            text = "Engine: yt-dlp Python Runtime & FFmpeg\n" +
+                                    "Version: ${uiState.ytDlpVersion}\n" +
+                                    "Architecture: arm64-v8a / Native Binaries\n" +
+                                    "Adaptive Remuxing: Enabled",
+                            style = UniMonoTypography.TechnicalSmall,
+                            color = colors.secondaryText
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+
+                        UniOutlinedButton(
+                            onClick = viewModel::updateYtDlp,
+                            enabled = !uiState.isUpdatingYtDlp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (uiState.isUpdatingYtDlp) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.Black
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("CHECKING UPSTREAM UPDATES...", style = AppTypography.labelSmall)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("UPDATE YT-DLP RUNTIME", style = AppTypography.labelSmall)
                             }
                         }
                     }

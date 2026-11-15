@@ -3,9 +3,12 @@ package com.unidownco.engine.downloader
 import android.util.Log
 import com.unidownco.core.network.NetworkClient
 import com.unidownco.domain.models.FormatOption
+import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.Response
 import java.io.File
@@ -26,31 +29,151 @@ class DownloadEngine {
     companion object {
         private const val TAG = "DownloadEngine"
         private const val BUFFER_SIZE = 64 * 1024 // 64 KB
+
+        fun parseSpeedFromLine(line: String?): Long {
+            if (line.isNullOrBlank()) return 0L
+            val match = Regex("""at\s+([\d.]+)\s*([KkMmGg]?i?B/s)""").find(line) ?: return 0L
+            val num = match.groupValues[1].toDoubleOrNull() ?: return 0L
+            val unit = match.groupValues[2].lowercase()
+            return when {
+                unit.startsWith("k") -> (num * 1024).toLong()
+                unit.startsWith("m") -> (num * 1024 * 1024).toLong()
+                unit.startsWith("g") -> (num * 1024 * 1024 * 1024).toLong()
+                else -> num.toLong()
+            }
+        }
     }
 
     /**
      * Downloads a video to the destination file.
-     * If the format provides separate video and audio URLs (DASH/adaptive streams),
-     * downloads both streams concurrently or sequentially and losslessly muxes them via MediaStreamMuxer.
+     * Evaluates direct progressive download, yt-dlp adaptive download/muxing,
+     * and native dual-stream remuxing with fallback.
      */
     suspend fun downloadStream(
         format: FormatOption,
         destinationFile: File,
+        originalUrl: String? = null,
+        downloadId: Long? = null,
         onProgress: suspend (DownloadProgress) -> Unit
     ): Result<File> = withContext(Dispatchers.IO) {
-        val audioUrl = format.audioUrl
+        val isDirectMediaFile = (format.videoUrl.endsWith(".mp4", ignoreCase = true) ||
+                format.videoUrl.endsWith(".webm", ignoreCase = true)) &&
+                !format.videoUrl.contains("manifest") &&
+                !format.videoUrl.contains("m3u8") &&
+                format.audioUrl.isNullOrBlank()
 
-        if (!audioUrl.isNullOrBlank()) {
-            // Dual stream: video + separate audio
-            downloadDualStreamAndMux(format, destinationFile, onProgress)
-        } else {
-            // Single combined stream
-            downloadSingleStream(
+        if (isDirectMediaFile) {
+            val directResult = downloadSingleStream(
                 streamUrl = format.videoUrl,
                 estimatedBytes = format.estimatedSizeBytes,
                 destinationFile = destinationFile,
                 onProgress = onProgress
             )
+            if (directResult.isSuccess) {
+                return@withContext directResult
+            }
+            Log.w(TAG, "Direct download failed, falling back to yt-dlp runtime: ${directResult.exceptionOrNull()?.message}")
+        }
+
+        // For social platforms, adaptive DASH/HLS streams, and formats extracted by yt-dlp:
+        val ytDlpResult = downloadViaYtDlp(
+            url = originalUrl ?: format.videoUrl,
+            format = format,
+            destinationFile = destinationFile,
+            downloadId = downloadId,
+            onProgress = onProgress
+        )
+
+        if (ytDlpResult.isSuccess) {
+            return@withContext ytDlpResult
+        }
+
+        // Fallback to dual stream native download if separate audio exists
+        if (!format.audioUrl.isNullOrBlank()) {
+            return@withContext downloadDualStreamAndMux(format, destinationFile, onProgress)
+        }
+
+        ytDlpResult
+    }
+
+    suspend fun downloadStream(
+        format: FormatOption,
+        destinationFile: File,
+        onProgress: suspend (DownloadProgress) -> Unit
+    ): Result<File> = downloadStream(format, destinationFile, null, null, onProgress)
+
+    private suspend fun downloadViaYtDlp(
+        url: String,
+        format: FormatOption,
+        destinationFile: File,
+        downloadId: Long?,
+        onProgress: suspend (DownloadProgress) -> Unit
+    ): Result<File> {
+        val processId = "dl_${downloadId ?: System.currentTimeMillis()}"
+        val targetDir = destinationFile.parentFile ?: return Result.failure(Exception("Invalid destination parent directory"))
+        if (!targetDir.exists()) targetDir.mkdirs()
+
+        val tempPrefix = "ytdl_${downloadId ?: System.currentTimeMillis()}"
+        val request = YoutubeDLRequest(url)
+        request.addOption("-o", "${targetDir.absolutePath}/$tempPrefix.%(ext)s")
+
+        if (format.formatId.isNotBlank() &&
+            format.formatId != "direct" &&
+            format.formatId != "direct_0" &&
+            format.formatId != "resume" &&
+            format.formatId != "Standard"
+        ) {
+            request.addOption("-f", "${format.formatId}+bestaudio/best")
+        } else {
+            request.addOption("-f", "bestvideo+bestaudio/best")
+        }
+
+        request.addOption("--merge-output-format", "mp4")
+        request.addOption("--no-playlist")
+        request.addOption("--no-update")
+        request.addOption("--no-mtime")
+        request.addOption("--socket-timeout", "20")
+
+        return try {
+            val response = YoutubeDL.getInstance().execute(request, processId) { progress, eta, line ->
+                val percent = progress.toInt().coerceIn(0, 100)
+                val speed = parseSpeedFromLine(line)
+                val estimatedTotal = if (format.estimatedSizeBytes > 0) format.estimatedSizeBytes else 10_000_000L
+                val downloaded = (estimatedTotal * (percent / 100.0)).toLong()
+
+                val progressObj = DownloadProgress(
+                    downloadedBytes = downloaded,
+                    totalBytes = estimatedTotal,
+                    progressPercent = percent,
+                    speedBytesPerSec = speed,
+                    etaSeconds = eta,
+                    statusMessage = line
+                )
+                runBlocking {
+                    onProgress(progressObj)
+                }
+            }
+
+            val downloadedFile = targetDir.listFiles { _, name ->
+                name.startsWith(tempPrefix)
+            }?.firstOrNull()
+
+            if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
+                if (destinationFile.exists()) destinationFile.delete()
+                val renamed = downloadedFile.renameTo(destinationFile)
+                if (renamed) {
+                    Result.success(destinationFile)
+                } else {
+                    downloadedFile.copyTo(destinationFile, overwrite = true)
+                    downloadedFile.delete()
+                    Result.success(destinationFile)
+                }
+            } else {
+                Result.failure(Exception("yt-dlp finished but output file not found in ${targetDir.absolutePath}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "yt-dlp download execution failed: ${e.message}", e)
+            Result.failure(e)
         }
     }
 

@@ -83,9 +83,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun onStartAnalysis() {
-        val url = _uiState.value.urlInput
+    fun onStartAnalysis(targetUrl: String? = null, autoDownload: Boolean = false) {
+        val url = targetUrl ?: _uiState.value.urlInput
         val validation = UrlValidator.validateAndExtract(url)
+        android.util.Log.i("HomeViewModel", "onStartAnalysis: url=$url, isValid=${validation.isValid}, autoDownload=$autoDownload")
         if (!validation.isValid) {
             _uiState.value = _uiState.value.copy(extractionError = validation.errorMessage ?: "Invalid URL")
             return
@@ -96,16 +97,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             when (val res = repository.extractMetadata(validation.sanitizedUrl)) {
                 is Resource.Success -> {
                     val info = res.data
+                    android.util.Log.i("HomeViewModel", "Extraction SUCCESS: title=${info.title}, formats=${info.formats.size}")
                     val defaultFormat = info.formats.firstOrNull { it.isBestQuality }
                         ?: info.formats.firstOrNull()
                     _uiState.value = _uiState.value.copy(
                         isExtracting = false,
                         extractedInfo = info,
                         selectedFormat = defaultFormat,
-                        showFormatSheet = true
+                        showFormatSheet = !autoDownload
                     )
+                    if (autoDownload && defaultFormat != null) {
+                        try {
+                            val id = repository.enqueueDownload(info, defaultFormat)
+                            android.util.Log.i("HomeViewModel", "Download ENQUEUED: id=$id")
+                        } catch (e: Exception) {
+                            android.util.Log.e("HomeViewModel", "Failed to enqueue download", e)
+                            _uiState.value = _uiState.value.copy(extractionError = e.message)
+                        }
+                    }
                 }
                 is Resource.Error -> {
+                    android.util.Log.e("HomeViewModel", "Extraction ERROR: ${res.message}")
                     _uiState.value = _uiState.value.copy(
                         isExtracting = false,
                         extractionError = res.message

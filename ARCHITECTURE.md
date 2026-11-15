@@ -41,18 +41,20 @@ app/
 The extraction engine uses an extensible multi-provider strategy architecture:
 ```
 ExtractorProvider (Interface)
-  ├── NativeExtractorProvider (Priority 100, Native Kotlin, zero GPL bloat)
-  │     ├── YouTubeExtractor      (Innertube API & oEmbed metadata)
-  │     ├── TikTokExtractor       (Direct stream extraction)
-  │     ├── InstagramExtractor    (Reels & Post embed stream parser)
-  │     ├── RedditExtractor       (v.redd.it DASH streams & audio pairing)
-  │     ├── TwitterExtractor      (X syndication high-bitrate variants)
-  │     ├── FacebookExtractor     (HD & SD video endpoints)
-  │     └── GenericExtractor      (Direct links & OpenGraph video tags)
+  ├── YtDlpExtractorProvider  (Priority 100, Operational yt-dlp & FFmpeg runtime)
+  │     ├── Native CPython + QuickJS + FFmpeg binary extraction
+  │     ├── Platform JS signature deciphering & visitor token synthesis
+  │     ├── Multi-format mapping & automatic adaptive stream pairing
+  │     └── In-app dynamic yt-dlp version updating via YtDlpEngineManager
   │
-  └── YtDlpExtractorProvider  (Priority 50, Decoupled companion engine)
-        ├── IPC Companion Bridge  (Runs external yt-dlp service)
-        └── YtDlpExtractorBridge  (Maps schemas, pairs adaptive audio/video)
+  └── NativeExtractorProvider (Priority 80, Native Kotlin fallback)
+        ├── YouTubeExtractor      (Innertube API & oEmbed metadata)
+        ├── TikTokExtractor       (Direct stream extraction)
+        ├── InstagramExtractor    (Reels & Post embed stream parser)
+        ├── RedditExtractor       (v.redd.it DASH streams & audio pairing)
+        ├── TwitterExtractor      (X syndication high-bitrate variants)
+        ├── FacebookExtractor     (HD & SD video endpoints)
+        └── GenericExtractor      (Direct links & OpenGraph video tags)
 ```
 
 ### Capabilities System (`ExtractionCapability`)
@@ -66,13 +68,13 @@ Each provider reports supported capabilities per platform:
 
 The `UniversalExtractorRegistry` coordinates URL detection and invokes providers in priority order with graceful fallback.
 
-### Download Execution
-- **Chunked Streams**: 64KB buffer streaming via OkHttp.
-- **Resume Support**: Utilizes HTTP `Range: bytes=X-` and temporary `.part` file buffers.
-- **Lossless Muxing**: `MediaStreamMuxer` (native Android `MediaExtractor` + `MediaMuxer`) for DASH/adaptive streams.
+### Dual-Strategy Download Execution
+- **Direct HTTP Chunked Streams**: 64KB buffer streaming via OkHttp with HTTP `Range: bytes=X-` resume support and `.part` buffers.
+- **Social & Adaptive Streams**: Ingested via `YoutubeDL.execute(...)` with format selection (`-f {id}+bestaudio/best`), MP4 remuxing (`--merge-output-format mp4`), and live regex throughput/progress parsing.
+- **Lossless Muxing**: `MediaStreamMuxer` (native Android `MediaExtractor` + `MediaMuxer`) for DASH/adaptive streams when downloaded via native engine.
 - **Hardware Media Verification**: `AndroidMediaVerifier` (`MediaMetadataRetriever`) validating audio/video tracks before completion.
-- **Speed & ETA**: Rolling time window metric calculations emitted every 500ms.
-- **Cancellation**: Full coroutine cancellation support with cleanup.
+- **Speed & ETA**: Real-time throughput metrics emitted every 500ms.
+- **Cancellation**: Full coroutine cancellation and `destroyProcessById` cleanup.
 
 ---
 

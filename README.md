@@ -16,20 +16,17 @@ $$\text{Share URL} \longrightarrow \text{Detect} \longrightarrow \text{Download}
 
 ## Step 1 Completed Architecture
 
-This release implements **Step 1: Project Foundation + Universal Video Downloader**:
+This release implements **Step 1: Project Foundation + Universal Video Downloader** (including Step 1.1, 1.2, and 1.3 real-device verification and yt-dlp runtime integration):
 - **High-Contrast Design System**: Built strictly according to `DESIGN.md` (*White Canvas, Black Structure, Yellow Accent, Inter Typography*).
-- **Universal Video Downloader Engine**: Multi-platform extractor architecture supporting:
-  - **YouTube**: Stream format discovery, audio/video stream resolution via Innertube API.
-  - **TikTok**: Direct MP4 extraction without watermark.
-  - **Instagram**: Reels and post MP4 video extraction.
-  - **Reddit**: `v.redd.it` and post video stream extraction with audio synchronization metadata.
-  - **X / Twitter**: Syndication API integration parsing high-bitrate MP4 variants.
-  - **Facebook**: HD / SD video stream discovery.
-  - **Generic / Direct**: MP4, WebM, MKV, and HTML5 video meta tag parsing.
-  - **yt-dlp Compatibility Bridge**: Format schema translation and mapping.
-- **Android Share Target Integration**: Seamless URL ingestion directly via Android's native `ACTION_SEND` Share Sheet.
-- **Room Persistence**: Robust database caching download history, active queues, video metadata, and progress.
-- **Background Execution**: Compliant Android 14/15 foreground service with progress notification, speed calculation, ETA, and cancellation.
+- **Universal Video Downloader Engine**:
+  - **Operational yt-dlp & FFmpeg Runtime**: Embedded `youtubedl-android` (v0.18.1) with CPython, QuickJS, and FFmpeg for social platform extraction (YouTube, TikTok, Instagram, Reddit, X/Twitter, Facebook).
+  - **Zero-Dependency Native Fallback**: Full native Kotlin extractors for direct MP4 streaming and baseline operations.
+  - **Dual-Mode Download Pipeline**: High-speed chunked OkHttp range streaming for direct MP4s, alongside yt-dlp subprocess execution for DASH/HLS and adaptive video/audio merging.
+  - **Dynamic In-App Updates**: Update yt-dlp core directly within the app settings.
+- **Android Share Target Integration**: Seamless URL ingestion directly via Android's native `ACTION_SEND` Share Sheet with automatic format detection and download queuing.
+- **Hardware-Level Media Verification**: Pre-export stream validation using Android's `MediaMetadataRetriever` to guarantee media integrity and prevent corrupt files from entering the gallery.
+- **Room Persistence**: Non-destructive migrated database caching download history, active queues, and technical metadata.
+- **Background Execution**: Compliant Android 14/15/16 foreground service with progress notification, speed calculation, ETA, and cancellation.
 - **MediaStore & Scoped Storage**: Automatic export of completed videos into `Movies/UniversalHDR/` with immediate system gallery visibility.
 - **Encoding Engine Interface Preparation**: Clean architectural boundaries established for Step 2 (`VideoAnalyzer`, `VideoEncoder`) and Step 3 (`HDRProcessor`, `FrameInterpolator`, `MediaVerifier`).
 
