@@ -25,7 +25,7 @@ interface ProcessingJobDao {
     @Query("SELECT * FROM processing_jobs WHERE downloadId = :downloadId LIMIT 1")
     fun observeJobByDownloadId(downloadId: Long): Flow<ProcessingJobEntity?>
 
-    @Query("SELECT * FROM processing_jobs WHERE stage IN ('QUEUED', 'ANALYZING', 'ENCODING', 'VERIFYING') ORDER BY id ASC")
+    @Query("SELECT * FROM processing_jobs WHERE stage IN ('QUEUED', 'PREPARING', 'ANALYZING', 'DECODING', 'ENCODING', 'MUXING', 'VALIDATING', 'VERIFYING') ORDER BY id ASC")
     fun getActiveJobs(): Flow<List<ProcessingJobEntity>>
 
     @Query("UPDATE processing_jobs SET stage = :stage, progressPercent = :progress, currentFps = :fps WHERE id = :id")
@@ -36,6 +36,9 @@ interface ProcessingJobDao {
 
     @Query("UPDATE processing_jobs SET stage = 'FAILED', errorMessage = :error WHERE id = :id")
     suspend fun markFailed(id: Long, error: String)
+
+    @Query("UPDATE processing_jobs SET stage = 'FAILED', errorMessage = :reason WHERE stage IN ('PREPARING', 'DECODING', 'ENCODING', 'MUXING', 'VALIDATING')")
+    suspend fun failInterruptedJobs(reason: String = "Interrupted by application restart")
 
     @Query("DELETE FROM processing_jobs WHERE downloadId = :downloadId")
     suspend fun deleteByDownloadId(downloadId: Long)

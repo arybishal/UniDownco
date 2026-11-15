@@ -204,6 +204,17 @@ class DownloadRepository(
                         // Auto-export to Gallery so video appears in system gallery
                         val galleryUri = storageManager.exportToGallery(finalFile, title)
                         UniLog.i("DownloadRepository", "Exported to Gallery: $galleryUri")
+
+                        // Step 2.2: Launch hardware processing job if preset is not DIRECT pass-through
+                        if (preset != ProcessingPreset.DIRECT) {
+                            UniLog.i("DownloadRepository", "Dispatching download $downloadId to ProcessingJobRepository: preset=${preset.id}")
+                            ProcessingJobRepository.getInstance(context).startProcessingJob(
+                                downloadId = downloadId,
+                                sourceFile = finalFile,
+                                title = title,
+                                preset = preset
+                            )
+                        }
                     } else {
                         val errMsg = "Media verification error: ${verification.errorDetails}"
                         UniLog.e("DownloadRepository", errMsg)

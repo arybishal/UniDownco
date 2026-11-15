@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.unidownco.core.common.Formatters
+import com.unidownco.core.database.ProcessingJobEntity
 import com.unidownco.core.design.components.UniAccentButton
 import com.unidownco.core.design.components.UniCard
 import com.unidownco.core.design.components.UniDestructiveButton
@@ -57,6 +58,8 @@ import com.unidownco.core.design.theme.UniShapes
 import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.DownloadStatus
+import com.unidownco.domain.models.ProcessingPreset
+import com.unidownco.engine.hardware.HardwareCapabilityRegistry
 
 @Composable
 fun QueueScreen(
@@ -65,10 +68,11 @@ fun QueueScreen(
 ) {
     val activeQueue by viewModel.activeQueue.collectAsState()
     val allDownloads by viewModel.allDownloads.collectAsState()
+    val activeProcessingJobs by viewModel.activeProcessingJobs.collectAsState()
     val colors = UniDownTheme.colors
 
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("DOWNLOAD QUEUE (${activeQueue.size})", "PROCESSING QUEUE (0)")
+    val tabs = listOf("DOWNLOAD QUEUE (${activeQueue.size})", "PROCESSING QUEUE (${activeProcessingJobs.size})")
 
     Column(
         modifier = modifier
@@ -151,8 +155,12 @@ fun QueueScreen(
                 }
             }
         } else {
-            // Processing Queue Placeholder (Step 2 & Step 3 Architecture)
-            ProcessingQueuePlaceholder()
+            // Processing Queue Tab (Step 2.2 Production MediaCodec Pipeline)
+            ProcessingQueueContent(
+                jobs = activeProcessingJobs,
+                onCancel = { viewModel.onCancelProcessing(it) },
+                onRetry = { viewModel.onRetryProcessing(it) }
+            )
         }
     }
 }
@@ -274,16 +282,56 @@ fun QueueItemCard(
 }
 
 @Composable
-fun ProcessingQueuePlaceholder() {
+fun ProcessingQueueContent(
+    jobs: List<ProcessingJobEntity>,
+    onCancel: (Long) -> Unit,
+    onRetry: (Long) -> Unit
+) {
     val colors = UniDownTheme.colors
+    val caps = remember { HardwareCapabilityRegistry.getCapabilities() }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(UniSpacing.screenHorizontalPadding),
+            .padding(horizontal = UniSpacing.screenHorizontalPadding),
         verticalArrangement = Arrangement.spacedBy(UniSpacing.md)
     ) {
         item { Spacer(modifier = Modifier.height(UniSpacing.xs)) }
 
+        if (jobs.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "NO ACTIVE PROCESSING JOBS",
+                            style = AppTypography.headlineMedium,
+                            color = colors.secondaryText
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Downloads queued with encoding presets will automatically transcode through the MediaCodec hardware pipeline.",
+                            style = AppTypography.bodyMedium,
+                            color = colors.tertiaryText
+                        )
+                    }
+                }
+            }
+        } else {
+            items(jobs, key = { it.id }) { job ->
+                ProcessingJobCard(
+                    job = job,
+                    onCancel = { onCancel(job.downloadId) },
+                    onRetry = { onRetry(job.downloadId) }
+                )
+            }
+        }
+
+        // Hardware Capability Summary Card
         item {
             UniCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -299,7 +347,7 @@ fun ProcessingQueuePlaceholder() {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "HEVC HDR ENCODING PIPELINE",
+                            text = "MEDIACODEC HARDWARE PIPELINE",
                             style = AppTypography.titleLarge,
                             color = colors.primaryText
                         )
@@ -308,7 +356,7 @@ fun ProcessingQueuePlaceholder() {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Prepared for Step 2 & Step 3 execution. Downloaded videos will be processed through the automated hardware/software HEVC encoder, HDR10 tone mapping, and 60 FPS motion interpolation pipeline.",
+                        text = "Real-time hardware HEVC (H.265) encoding with lossless audio passthrough and post-transcode validation.",
                         style = AppTypography.bodyMedium,
                         color = colors.secondaryText
                     )
@@ -316,32 +364,113 @@ fun ProcessingQueuePlaceholder() {
                     Spacer(modifier = Modifier.height(UniSpacing.md))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        UniTechBadge(label = "STEP 2: HEVC MAIN10")
-                        UniTechBadge(label = "STEP 3: HDR10 / 10+")
-                        UniTechBadge(label = "60 FPS ENGINE")
+                        UniTechBadge(
+                            label = if (caps.supportsHardwareMain10) "10-BIT MAIN10" else "8-BIT HEVC MAIN",
+                            isHighlighted = true
+                        )
+                        UniTechBadge(label = caps.hardwareEncoderName ?: "MEDIACODEC HW")
+                        UniTechBadge(label = "${caps.maxWidth}x${caps.maxHeight}")
                     }
                 }
             }
         }
 
-        item {
-            UniCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+        item { Spacer(modifier = Modifier.height(UniSpacing.lg)) }
+    }
+}
+
+@Composable
+fun ProcessingJobCard(
+    job: ProcessingJobEntity,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val colors = UniDownTheme.colors
+    val caps = remember { HardwareCapabilityRegistry.getCapabilities() }
+    val preset = ProcessingPreset.fromId(job.preset)
+
+    UniCard(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "TARGET HARDWARE ACCELERATION",
-                        style = AppTypography.labelLarge,
-                        color = colors.primaryText
+                        text = "Job #${job.id} • Download #${job.downloadId}",
+                        style = AppTypography.titleMedium,
+                        color = colors.primaryText,
+                        maxLines = 1
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Device Target: OnePlus Ace 5 / OnePlus 13R\n" +
-                                "SoC: Snapdragon 8 Gen 3\n" +
-                                "GPU: Adreno 750\n" +
-                                "Codec: MediaCodec c2.qti.hevc.encoder (10-bit Main10)\n" +
-                                "Fallback: FFmpeg libx265 Software Encoder",
-                        style = UniMonoTypography.TechnicalSmall,
-                        color = colors.secondaryText
-                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        UniTechBadge(label = preset.getBadge(caps).uppercase(), isHighlighted = true)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        UniTechBadge(label = job.targetCodec.uppercase())
+                        Spacer(modifier = Modifier.width(6.dp))
+                        UniTechBadge(label = "${job.targetFps} FPS")
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                UniStatusBadge(status = job.stage)
+            }
+
+            Spacer(modifier = Modifier.height(UniSpacing.md))
+
+            // Progress Bar
+            UniProgressBar(
+                progressPercent = job.progressPercent,
+                speedText = if (job.currentFps > 0) "${job.currentFps.toInt()} FPS" else null,
+                etaText = null,
+                sizeText = job.stage
+            )
+
+            if (!job.errorMessage.isNullOrBlank() && job.stage == "FAILED") {
+                Spacer(modifier = Modifier.height(UniSpacing.xs))
+                Text(
+                    text = job.errorMessage!!,
+                    style = AppTypography.bodySmall,
+                    color = colors.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.errorBackground, UniShapes.BadgeShape)
+                        .padding(8.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(UniSpacing.md))
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (job.stage == "FAILED") {
+                    UniAccentButton(
+                        onClick = onRetry,
+                        modifier = Modifier.height(38.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("RETRY", style = AppTypography.labelSmall, color = Color.Black)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                if (job.stage in listOf("QUEUED", "PREPARING", "ENCODING", "MUXING", "VALIDATING")) {
+                    UniDestructiveButton(
+                        onClick = onCancel,
+                        modifier = Modifier.height(38.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("CANCEL", style = AppTypography.labelSmall)
+                    }
                 }
             }
         }

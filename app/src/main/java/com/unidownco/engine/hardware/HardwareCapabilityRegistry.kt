@@ -102,21 +102,32 @@ object HardwareCapabilityRegistry {
                 }
 
                 if (isHw) {
-                    hwEncoderName = info.name
-                    hwSupportsMain = hasMain
-                    hwSupportsMain10 = hasMain10
+                    val currentMaxPixels = maxWidth.toLong() * maxHeight.toLong()
+                    val thisWidth = caps.videoCapabilities?.supportedWidths?.upper ?: 0
+                    val thisHeight = caps.videoCapabilities?.supportedHeights?.upper ?: 0
+                    val thisMaxPixels = thisWidth.toLong() * thisHeight.toLong()
+
+                    // Prefer modern Codec2 encoder (c2.) over legacy OMX, and prefer larger resolution support
+                    val isCurrentC2 = hwEncoderName?.startsWith("c2.") == true
+                    val isThisC2 = info.name.startsWith("c2.")
+
+                    val shouldPickThis = hwEncoderName == null ||
+                        (isThisC2 && !isCurrentC2) ||
+                        (isThisC2 == isCurrentC2 && thisMaxPixels > currentMaxPixels)
+
+                    if (shouldPickThis) {
+                        hwEncoderName = info.name
+                        hwSupportsMain = hasMain
+                        hwSupportsMain10 = hasMain10
+                        if (thisWidth > 0) maxWidth = thisWidth
+                        if (thisHeight > 0) maxHeight = thisHeight
+                        caps.videoCapabilities?.supportedFrameRates?.upper?.toInt()?.let { maxFps = it }
+                    }
 
                     // Color formats
                     caps.colorFormats?.forEach { format ->
                         if (format == CodecCapabilities.COLOR_FormatSurface) supportsSurface = true
                         if (format == CodecCapabilities.COLOR_FormatYUVP010) supports10Bit = true
-                    }
-
-                    // Resolution & FPS bounds
-                    caps.videoCapabilities?.let { vc ->
-                        maxWidth = vc.supportedWidths.upper
-                        maxHeight = vc.supportedHeights.upper
-                        maxFps = vc.supportedFrameRates.upper.toInt()
                     }
 
                     // Bitrate modes
