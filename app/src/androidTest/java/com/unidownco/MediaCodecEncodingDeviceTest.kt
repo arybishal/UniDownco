@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.unidownco.core.database.DownloadEntity
 import com.unidownco.core.database.ProcessingJobEntity
 import com.unidownco.core.database.UniDownDatabase
 import com.unidownco.core.storage.StorageManager
@@ -344,8 +345,19 @@ class MediaCodecEncodingDeviceTest {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val db = UniDownDatabase.getInstance(context)
             val dao = db.processingJobDao()
+            val downloadDao = db.downloadDao()
 
-            val testDownloadId = 9999L
+            // Insert a parent DownloadEntity to satisfy Room Foreign Key constraint
+            val testDownloadId = downloadDao.insertDownload(
+                DownloadEntity(
+                    url = "https://example.com/test_interrupted.mp4",
+                    platform = "direct",
+                    title = "Test Interrupted Download",
+                    originalFilename = "test_interrupted.mp4",
+                    downloadStatus = "COMPLETED"
+                )
+            )
+
             // Clean any pre-existing job for this test id
             dao.deleteByDownloadId(testDownloadId)
 
@@ -375,6 +387,41 @@ class MediaCodecEncodingDeviceTest {
             assertEquals("Interrupted by application restart", reconciled.errorMessage)
 
             dao.deleteByDownloadId(testDownloadId)
+            downloadDao.deleteById(testDownloadId)
+        }
+    }
+
+    @Test
+    fun test12_VideoRotationAndOrientationMetadataIntegrity() {
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val sourceVideo = findVideoWithAudioOnDevice()
+            val cacheDir = context.cacheDir
+            val outputFile = File(cacheDir, "test12_rotation_out.mp4")
+            if (outputFile.exists()) outputFile.delete()
+
+            val engine = VideoProcessingEngine(context = context)
+            val result = engine.encode(
+                sourceFile = sourceVideo,
+                outputFile = outputFile,
+                profile = QualityProfile.BALANCED
+            ) { _ -> }
+
+            assertTrue("Encoding must succeed: ${result.exceptionOrNull()?.message}", result.isSuccess)
+
+            // Strict validation of orientation metadata, dimensions, and decodability
+            val validation = ProcessingOutputValidator.validate(
+                outputFile = outputFile,
+                expectedHasAudio = true,
+                expectedRotationDegrees = 0
+            )
+
+            assertTrue("Validation must pass with rotation verification: ${validation.errorDetails}", validation.isValid)
+            assertTrue("Output codec must be HEVC", validation.isHevc)
+            assertEquals("Rotation must be 0 degrees", 0, validation.rotationDegrees)
+            assertTrue("Frame decode probe must succeed", validation.canDecodeBitmap)
+
+            outputFile.delete()
         }
     }
 
