@@ -2,6 +2,31 @@
 
 All notable changes to the UniDownco project will be documented in this file.
 
+## [1.0.5-step1.3.3] - 2026-11-15
+### Added
+- **Release Optimization & Standalone ABI Splits**:
+  - Implemented Gradle ABI splits in `app/build.gradle.kts` generating standalone APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, alongside universal APKs and production Android App Bundles (`.aab`).
+  - Achieved dramatic APK size reduction: Standalone `arm64-v8a` release APK is **55.8 MB** (67.3% reduction compared to the 170.9 MB universal debug build).
+  - Configured R8 minification and hardened `proguard-rules.pro` for Jackson databind, youtubedl-android runtime, Apache Commons, Room, and Domain models.
+- **Physical Device Release Verification**:
+  - Successfully installed and verified `app-arm64-v8a-release.apk` on physical Xiaomi Redmi Note (`25062RN2DA`, Android 16 / API 36).
+  - Confirmed clean cold launch, zero runtime crashes, and proper JNI native binding.
+- **Multi-Platform Extraction & Download Verification Matrix**:
+  - Executed physical on-device extraction and download tests across 7 target platforms.
+  - YouTube: PASS (adaptive video + audio merge, verified, saved to `Movies/UniDownco/`).
+  - Direct MP4: PASS (HTTP range streaming, hardware verified, exported to MediaStore).
+  - Facebook: PASS (extracted progressive streams, verified, exported to MediaStore).
+  - Reddit: AUTH REQUIRED / BLOCKED (HTTP 403 on session endpoint, cookies required).
+  - TikTok: FAIL / BLOCKED (anti-bot signature challenge / IP block).
+  - Instagram: AUTH REQUIRED (login session cookies required).
+  - X / Twitter: AUTH REQUIRED / BLOCKED (syndication API rate limits / cookies required).
+- **Foreground Service Android 16 Compatibility**:
+  - Validated `DownloadForegroundService` with `foregroundServiceType="dataSync"`, notification channels, ongoing progress updates, and clean lifecycle management.
+- **Legal & License Inventory**:
+  - Expanded `THIRD_PARTY_NOTICES.md` with full attribution for QuickJS, Jackson JSON Processor, Apache Commons, and test libraries.
+- **Unit Testing Suite**:
+  - Executed full test suite with 38 unit tests passing (100% pass rate).
+
 ## [1.0.4-step1.3.2] - 2026-11-15
 ### Added
 - **Resolution Selection Bottom Sheet & Sticky Download Action**:

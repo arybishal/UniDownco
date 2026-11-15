@@ -16,17 +16,21 @@ $$\text{Share URL} \longrightarrow \text{Detect} \longrightarrow \text{Download}
 
 ## Step 1 Completed Architecture
 
-This release implements **Step 1: Project Foundation + Universal Video Downloader** (including Step 1.1, 1.2, and 1.3 real-device verification and yt-dlp runtime integration):
+This release completes **Step 1: Project Foundation + Universal Video Downloader** (including Step 1.1, 1.2, 1.3, 1.3.2 UI/UX overhaul, and Step 1.3.3 release hardening):
 - **High-Contrast Design System**: Built strictly according to `DESIGN.md` (*White Canvas, Black Structure, Yellow Accent, Inter Typography*).
 - **Universal Video Downloader Engine**:
   - **Operational yt-dlp & FFmpeg Runtime**: Embedded `youtubedl-android` (v0.18.1) with CPython, QuickJS, and FFmpeg for social platform extraction (YouTube, TikTok, Instagram, Reddit, X/Twitter, Facebook).
   - **Zero-Dependency Native Fallback**: Full native Kotlin extractors for direct MP4 streaming and baseline operations.
   - **Dual-Mode Download Pipeline**: High-speed chunked OkHttp range streaming for direct MP4s, alongside yt-dlp subprocess execution for DASH/HLS and adaptive video/audio merging.
   - **Dynamic In-App Updates**: Update yt-dlp core directly within the app settings.
+- **Release Optimization & ABI Splits**:
+  - Configured Gradle ABI splits for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, reducing the standalone arm64 release APK size to **55.8 MB** (~67.3% reduction compared to 170.9 MB universal debug APK).
+  - Hardened ProGuard / R8 rules for Jackson, youtubedl-android, Apache Commons, Room, and Domain models.
+  - Generates optimized Android App Bundles (`app-release.aab`) for production distribution.
 - **Android Share Target Integration**: Seamless URL ingestion directly via Android's native `ACTION_SEND` Share Sheet with automatic format detection and download queuing.
 - **Hardware-Level Media Verification**: Pre-export stream validation using Android's `MediaMetadataRetriever` to guarantee media integrity and prevent corrupt files from entering the gallery.
 - **Room Persistence**: Non-destructive migrated database caching download history, active queues, and technical metadata.
-- **Background Execution**: Compliant Android 14/15/16 foreground service with progress notification, speed calculation, ETA, and cancellation.
+- **Background Execution**: Compliant Android 14/15/16 foreground service (`dataSync`) with progress notification, speed calculation, ETA, and cancellation.
 - **MediaStore & Scoped Storage**: Automatic export of completed videos into `Movies/UniDownco/` with immediate system gallery visibility.
 - **UI/UX & Diagnostics Overhaul**:
   - Resolution selector with scrollable format cards and persistent sticky **"DOWNLOAD {RESOLUTION}"** primary action.
@@ -51,15 +55,26 @@ This release implements **Step 1: Project Foundation + Universal Video Downloade
 
 ---
 
-## Verification & Build
+## Build & Release Artifacts
 
-To assemble the debug APK:
+To build debug APKs (per-ABI and universal):
 ```bash
 ./gradlew assembleDebug
 ```
-Output artifact: `app/build/outputs/apk/debug/app-debug.apk`
+Output artifacts:
+- `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` (~73.9 MB)
+- `app/build/outputs/apk/debug/app-universal-debug.apk` (~170.7 MB)
 
-To execute unit tests:
+To build optimized release APKs and App Bundle:
 ```bash
-./gradlew test
+./gradlew assembleRelease bundleRelease
+```
+Output artifacts:
+- `app/build/outputs/apk/release/app-arm64-v8a-release.apk` (~55.8 MB)
+- `app/build/outputs/apk/release/app-universal-release.apk` (~152.5 MB)
+- `app/build/outputs/bundle/release/app-release.aab` (~154.8 MB)
+
+To execute the unit test suite (38 unit tests):
+```bash
+./gradlew testDebugUnitTest
 ```

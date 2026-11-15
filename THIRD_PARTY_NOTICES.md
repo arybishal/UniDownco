@@ -47,6 +47,24 @@ This document provides complete attribution, licenses, and notices in compliance
 - **Website:** https://square.github.io/okhttp/
 - **License:** Apache License, Version 2.0
 
+## 8. QuickJS Javascript Engine
+- **Authors:** Fabrice Bellard and Charlie Gordon
+- **Website:** https://bellard.org/quickjs/
+- **License:** MIT License
+- **Notice:** Packaged within youtubedl-android runtime for JavaScript signature challenge evaluation.
+
+## 9. Jackson JSON Processor
+- **Libraries:** jackson-core, jackson-databind, jackson-annotations
+- **Developer:** FasterXML, LLC
+- **Website:** https://github.com/FasterXML/jackson
+- **License:** Apache License, Version 2.0
+
+## 10. Apache Commons
+- **Libraries:** commons-compress, commons-io
+- **Developer:** Apache Software Foundation
+- **Website:** https://commons.apache.org/
+- **License:** Apache License, Version 2.0
+
 ---
 
 ### GPL-3.0 Compliance and Source Availability
