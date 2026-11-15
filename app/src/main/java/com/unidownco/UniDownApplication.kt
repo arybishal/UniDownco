@@ -7,7 +7,11 @@ import android.content.Context
 import android.os.Build
 import com.unidownco.core.logging.UniLog
 import com.unidownco.core.network.DownloadForegroundService
+import com.unidownco.engine.hardware.HardwareCapabilityRegistry
 import com.unidownco.engine.ytdlp.YtDlpEngineManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class UniDownApplication : Application() {
 
@@ -25,6 +29,15 @@ class UniDownApplication : Application() {
         UniLog.init(this)
         createNotificationChannels()
         YtDlpEngineManager.init(this)
+
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                val report = HardwareCapabilityRegistry.getDiagnosticReport()
+                UniLog.i("HardwareProfile", "\n$report")
+            } catch (e: Exception) {
+                UniLog.e("HardwareProfile", "Failed to probe hardware capabilities", e)
+            }
+        }
     }
 
     private fun createNotificationChannels() {

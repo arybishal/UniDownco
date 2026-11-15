@@ -14,6 +14,7 @@ import com.unidownco.core.storage.StorageManager
 import com.unidownco.data.repository.DownloadRepository
 import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.FormatOption
+import com.unidownco.domain.models.ProcessingPreset
 import com.unidownco.domain.models.VideoExtractionInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +31,7 @@ data class HomeUiState(
     val extractionError: String? = null,
     val extractedInfo: VideoExtractionInfo? = null,
     val selectedFormat: FormatOption? = null,
+    val selectedPreset: ProcessingPreset = ProcessingPreset.HDR10_ENHANCED,
     val showFormatSheet: Boolean = false,
     val freeStorageBytes: Long = 0L,
     val totalStorageBytes: Long = 0L
@@ -109,7 +111,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     if (autoDownload && defaultFormat != null) {
                         try {
-                            val id = repository.enqueueDownload(info, defaultFormat)
+                            val id = repository.enqueueDownload(info, defaultFormat, _uiState.value.selectedPreset)
                             UniLog.i("HomeViewModel", "Download ENQUEUED: id=$id (auto)")
                         } catch (e: Exception) {
                             UniLog.e("HomeViewModel", "Failed to enqueue download", e)
@@ -136,6 +138,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(selectedFormat = format)
     }
 
+    fun onSelectPreset(preset: ProcessingPreset) {
+        UniLog.d("HomeViewModel", "User selected processing preset: ${preset.id}")
+        _uiState.value = _uiState.value.copy(selectedPreset = preset)
+    }
+
     fun onDismissFormatSheet() {
         _uiState.value = _uiState.value.copy(showFormatSheet = false)
     }
@@ -143,11 +150,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun onConfirmDownload() {
         val info = _uiState.value.extractedInfo ?: return
         val format = _uiState.value.selectedFormat ?: info.formats.firstOrNull() ?: return
+        val preset = _uiState.value.selectedPreset
 
-        UniLog.i("HomeViewModel", "Confirming download for '${info.title}' format=${format.resolution} (id=${format.formatId})")
+        UniLog.i("HomeViewModel", "Confirming download for '${info.title}' format=${format.resolution} (id=${format.formatId}), preset=${preset.id}")
         viewModelScope.launch {
             try {
-                val id = repository.enqueueDownload(info, format)
+                val id = repository.enqueueDownload(info, format, preset)
                 UniLog.i("HomeViewModel", "Download successfully enqueued with id=$id")
                 _uiState.value = _uiState.value.copy(
                     showFormatSheet = false,

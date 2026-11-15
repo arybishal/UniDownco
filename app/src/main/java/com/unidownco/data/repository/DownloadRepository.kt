@@ -6,6 +6,8 @@ import com.unidownco.core.common.Platform
 import com.unidownco.core.common.Resource
 import com.unidownco.core.database.DownloadDao
 import com.unidownco.core.database.DownloadEntity
+import com.unidownco.core.database.ProcessingJobEntity
+import com.unidownco.core.database.UniDownDatabase
 import com.unidownco.core.logging.UniLog
 import com.unidownco.core.network.DownloadForegroundService
 import com.unidownco.core.storage.StorageManager
@@ -14,7 +16,9 @@ import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.DownloadStatus
 import com.unidownco.domain.models.EncodingStatus
 import com.unidownco.domain.models.FormatOption
+import com.unidownco.domain.models.ProcessingPreset
 import com.unidownco.domain.models.VideoExtractionInfo
+import com.unidownco.engine.analyzer.VideoAnalyzerImpl
 import com.unidownco.engine.downloader.DownloadEngine
 import com.unidownco.engine.verifier.AndroidMediaVerifier
 import com.unidownco.engine.verifier.MediaVerifier
@@ -68,15 +72,25 @@ class DownloadRepository(
     }
 
     /**
-     * Enqueues a video for download with the selected format option.
+     * Enqueues a video for download with the selected format option and processing preset.
      */
-    suspend fun enqueueDownload(info: VideoExtractionInfo, selectedFormat: FormatOption): Long {
+    suspend fun enqueueDownload(
+        info: VideoExtractionInfo,
+        selectedFormat: FormatOption,
+        preset: ProcessingPreset = ProcessingPreset.HDR10_ENHANCED
+    ): Long {
         if (!storageManager.hasAvailableSpace()) {
             throw IllegalStateException("Low storage space. At least 100MB required.")
         }
 
         val filename = "${storageManager.sanitizeFilename(info.title)}.${selectedFormat.container}"
         val targetFile = storageManager.createDownloadFile(info.title, selectedFormat.container)
+
+        val initialEncodingStatus = if (preset == ProcessingPreset.DIRECT) {
+            EncodingStatus.SKIPPED.name
+        } else {
+            EncodingStatus.NOT_STARTED.name
+        }
 
         val entity = DownloadEntity(
             url = info.url,
@@ -94,12 +108,30 @@ class DownloadRepository(
             durationSeconds = info.durationSeconds,
             fileSizeBytes = selectedFormat.estimatedSizeBytes,
             downloadStatus = DownloadStatus.PENDING.name,
-            encodingStatus = EncodingStatus.NOT_STARTED.name,
+            encodingStatus = initialEncodingStatus,
             createdAt = System.currentTimeMillis()
         )
 
         val downloadId = downloadDao.insertDownload(entity)
-        startDownload(downloadId, selectedFormat, targetFile, info.title, info.url)
+
+        // Register associated ProcessingJob in Room
+        try {
+            val db = UniDownDatabase.getInstance(context)
+            val job = ProcessingJobEntity(
+                downloadId = downloadId,
+                preset = preset.id,
+                targetCodec = "hevc",
+                targetHdrType = if (preset == ProcessingPreset.DIRECT) "PASSTHROUGH" else "HDR10",
+                targetFps = if (preset == ProcessingPreset.ULTRA_HDR_60FPS) 60 else selectedFormat.fps,
+                stage = if (preset == ProcessingPreset.DIRECT) "SKIPPED" else "QUEUED"
+            )
+            db.processingJobDao().insertJob(job)
+            UniLog.i("DownloadRepository", "Created ProcessingJob for download $downloadId: preset=${preset.id}")
+        } catch (e: Exception) {
+            UniLog.e("DownloadRepository", "Failed to create processing job", e)
+        }
+
+        startDownload(downloadId, selectedFormat, targetFile, info.title, info.url, preset)
         return downloadId
     }
 
@@ -108,14 +140,15 @@ class DownloadRepository(
         format: FormatOption,
         targetFile: File,
         title: String,
-        originalUrl: String? = null
+        originalUrl: String? = null,
+        preset: ProcessingPreset = ProcessingPreset.HDR10_ENHANCED
     ) {
         // Cancel existing job if running
         activeJobs[downloadId]?.cancel()
 
         val job = scope.launch {
             try {
-                UniLog.i("DownloadRepository", "Starting download: id=$downloadId, title='$title', format=${format.resolution}")
+                UniLog.i("DownloadRepository", "Starting download: id=$downloadId, title='$title', format=${format.resolution}, preset=${preset.id}")
                 downloadDao.updateStatus(downloadId, DownloadStatus.DOWNLOADING.name)
                 DownloadForegroundService.start(context, downloadId, title)
 
@@ -154,6 +187,20 @@ class DownloadRepository(
                             completedAt = System.currentTimeMillis()
                         )
                         UniLog.i("DownloadRepository", "Verification PASSED, publishing to ${StorageManager.RELATIVE_MOVIES_PATH}/")
+
+                        // Deep Video Analysis & Room Persistence (Step 2.1)
+                        try {
+                            val analysisResult = VideoAnalyzerImpl().analyze(finalFile)
+                            if (analysisResult.isSuccess) {
+                                val analysis = analysisResult.getOrThrow()
+                                val metaDao = UniDownDatabase.getInstance(context).videoMetadataDao()
+                                metaDao.insertMetadata(VideoAnalyzerImpl.toEntity(downloadId, analysis))
+                                UniLog.i("DownloadRepository", "Persisted VideoMetadata: ${analysis.width}x${analysis.height}, ${analysis.hdrType} (${analysis.bitDepth}-bit)")
+                            }
+                        } catch (e: Exception) {
+                            UniLog.w("DownloadRepository", "Failed saving video metadata: ${e.message}")
+                        }
+
                         // Auto-export to Gallery so video appears in system gallery
                         val galleryUri = storageManager.exportToGallery(finalFile, title)
                         UniLog.i("DownloadRepository", "Exported to Gallery: $galleryUri")
@@ -212,7 +259,12 @@ class DownloadRepository(
             estimatedSizeBytes = entity.fileSizeBytes
         )
 
-        startDownload(id, format, targetFile, entity.title, entity.url)
+        val processingJob = try {
+            UniDownDatabase.getInstance(context).processingJobDao().getJobByDownloadId(id)
+        } catch (_: Exception) { null }
+        val preset = processingJob?.let { ProcessingPreset.fromId(it.preset) } ?: ProcessingPreset.HDR10_ENHANCED
+
+        startDownload(id, format, targetFile, entity.title, entity.url, preset)
     }
 
     suspend fun cancelDownload(id: Long) {

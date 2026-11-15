@@ -59,6 +59,7 @@ import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.core.storage.StorageManager
 import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.FormatOption
+import com.unidownco.domain.models.ProcessingPreset
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -328,6 +329,31 @@ fun HomeScreen(
                             onSelect = { viewModel.onSelectFormat(format) }
                         )
                     }
+
+                    item {
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+                        Text(
+                            text = "AUTOMATIC HDR & PROCESSING",
+                            style = AppTypography.titleMedium,
+                            color = colors.primaryText
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Select encoding engine preset for your device",
+                            style = AppTypography.bodySmall,
+                            color = colors.secondaryText
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    items(ProcessingPreset.entries, key = { it.id }) { preset ->
+                        val isPresetSelected = uiState.selectedPreset == preset
+                        ProcessingPresetCard(
+                            preset = preset,
+                            isSelected = isPresetSelected,
+                            onSelect = { viewModel.onSelectPreset(preset) }
+                        )
+                    }
                 }
 
                 // Sticky Bottom Bar with Prominent DOWNLOAD SELECTED FORMAT action
@@ -342,7 +368,7 @@ fun HomeScreen(
                 ) {
                     val selected = uiState.selectedFormat
                     val buttonText = if (selected != null) {
-                        "DOWNLOAD ${selected.resolution.uppercase()}"
+                        "DOWNLOAD ${selected.resolution.uppercase()} • ${uiState.selectedPreset.badge.uppercase()}"
                     } else {
                         "DOWNLOAD SELECTED FORMAT"
                     }
@@ -581,6 +607,62 @@ fun FormatOptionCard(
                     style = AppTypography.labelSmall.copy(color = colors.tertiaryText)
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun ProcessingPresetCard(
+    preset: ProcessingPreset,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    val colors = UniDownTheme.colors
+    val bg = if (isSelected) colors.surfaceSubtle else colors.surface
+    val border = if (isSelected) Color.Black else colors.subtleBorder
+    val borderWidth = if (isSelected) 2.dp else 1.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg, UniShapes.CardShape)
+            .border(borderWidth, border, UniShapes.CardShape)
+            .clickable { onSelect() }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = onSelect,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = Color.Black,
+                unselectedColor = colors.tertiaryText
+            )
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = preset.title,
+                    style = AppTypography.titleSmall,
+                    color = colors.primaryText
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                UniTechBadge(
+                    label = preset.badge.uppercase(),
+                    isHighlighted = preset == ProcessingPreset.HDR10_ENHANCED
+                )
+            }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+                text = preset.description,
+                style = AppTypography.bodySmall,
+                color = colors.secondaryText
+            )
         }
     }
 }
