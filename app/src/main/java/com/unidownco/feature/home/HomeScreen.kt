@@ -37,6 +37,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,7 +60,10 @@ import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.core.storage.StorageManager
 import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.FormatOption
+import com.unidownco.domain.models.PresetStatus
 import com.unidownco.domain.models.ProcessingPreset
+import com.unidownco.engine.hardware.HardwareCapabilities
+import com.unidownco.engine.hardware.HardwareCapabilityRegistry
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -265,6 +269,7 @@ fun HomeScreen(
             containerColor = colors.surface,
             shape = UniShapes.BottomSheetShape
         ) {
+            val hwCaps = remember { HardwareCapabilityRegistry.getCapabilities() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -351,6 +356,7 @@ fun HomeScreen(
                         ProcessingPresetCard(
                             preset = preset,
                             isSelected = isPresetSelected,
+                            caps = hwCaps,
                             onSelect = { viewModel.onSelectPreset(preset) }
                         )
                     }
@@ -368,7 +374,7 @@ fun HomeScreen(
                 ) {
                     val selected = uiState.selectedFormat
                     val buttonText = if (selected != null) {
-                        "DOWNLOAD ${selected.resolution.uppercase()} • ${uiState.selectedPreset.badge.uppercase()}"
+                        "DOWNLOAD ${selected.resolution.uppercase()} • ${uiState.selectedPreset.getBadge(hwCaps).uppercase()}"
                     } else {
                         "DOWNLOAD SELECTED FORMAT"
                     }
@@ -615,12 +621,16 @@ fun FormatOptionCard(
 fun ProcessingPresetCard(
     preset: ProcessingPreset,
     isSelected: Boolean,
+    caps: HardwareCapabilities,
     onSelect: () -> Unit
 ) {
     val colors = UniDownTheme.colors
     val bg = if (isSelected) colors.surfaceSubtle else colors.surface
     val border = if (isSelected) Color.Black else colors.subtleBorder
     val borderWidth = if (isSelected) 2.dp else 1.dp
+    val badge = preset.getBadge(caps).uppercase()
+    val desc = preset.getDescription(caps)
+    val status = preset.getStatus(caps)
 
     Row(
         modifier = Modifier
@@ -651,17 +661,17 @@ fun ProcessingPresetCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 UniTechBadge(
-                    label = preset.badge.uppercase(),
-                    isHighlighted = preset == ProcessingPreset.HDR10_ENHANCED
+                    label = badge,
+                    isHighlighted = status == PresetStatus.AVAILABLE
                 )
             }
 
             Spacer(modifier = Modifier.height(3.dp))
 
             Text(
-                text = preset.description,
+                text = desc,
                 style = AppTypography.bodySmall,
-                color = colors.secondaryText
+                color = if (status == PresetStatus.HARDWARE_UNSUPPORTED) colors.tertiaryText else colors.secondaryText
             )
         }
     }

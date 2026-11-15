@@ -24,14 +24,14 @@ class StorageManager(private val context: Context) {
         const val LEGACY_REL_PATH = "Movies/UniversalHDR"
     }
 
-    private val downloadsDir: File
+    val downloadsDir: File
         get() {
             val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "downloads")
             if (!dir.exists()) dir.mkdirs()
             return dir
         }
 
-    private val originalsDir: File
+    val originalsDir: File
         get() {
             val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "originals")
             if (!dir.exists()) dir.mkdirs()
@@ -39,14 +39,63 @@ class StorageManager(private val context: Context) {
         }
 
     /**
-     * Creates an isolated file destination for a new download in app-private external storage.
+     * Creates an isolated file destination for an original download stream in Movies/originals/.
+     * Collision-safe with timestamps and auto-incrementing counters.
      */
-    fun createDownloadFile(title: String, extension: String = "mp4"): File {
+    fun createOriginalFile(title: String, extension: String = "mp4"): File {
         val sanitized = sanitizeFilename(title)
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val filename = "${sanitized}_$timestamp.$extension"
-        return File(downloadsDir, filename)
+        var target = File(originalsDir, "${sanitized}_$timestamp.$extension")
+        var counter = 1
+        while (target.exists()) {
+            target = File(originalsDir, "${sanitized}_${timestamp}_$counter.$extension")
+            counter++
+        }
+        return target
     }
+
+    /**
+     * Creates an isolated file destination for processed / intermediate video output in Movies/downloads/.
+     */
+    fun createProcessingFile(title: String, extension: String = "mp4"): File {
+        val sanitized = sanitizeFilename(title)
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        var target = File(downloadsDir, "${sanitized}_processed_$timestamp.$extension")
+        var counter = 1
+        while (target.exists()) {
+            target = File(downloadsDir, "${sanitized}_processed_${timestamp}_$counter.$extension")
+            counter++
+        }
+        return target
+    }
+
+    /**
+     * Purges original downloaded files from Movies/originals/ upon explicit user request.
+     * Returns total bytes freed.
+     */
+    fun purgeOriginalFiles(): Long {
+        var bytesFreed = 0L
+        originalsDir.listFiles()?.forEach { file ->
+            if (file.isFile) {
+                val len = file.length()
+                if (file.delete()) {
+                    bytesFreed += len
+                }
+            }
+        }
+        UniLog.i("StorageManager", "Explicit user purge completed: freed $bytesFreed bytes from Movies/originals/")
+        return bytesFreed
+    }
+
+    fun getTotalOriginalsSizeBytes(): Long {
+        return originalsDir.listFiles()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
+    }
+
+    /**
+     * Creates an isolated file destination for a new download (delegates to createOriginalFile).
+     */
+    fun createDownloadFile(title: String, extension: String = "mp4"): File =
+        createOriginalFile(title, extension)
 
     /**
      * Sanitizes strings to make them safe for local filesystem paths.

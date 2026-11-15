@@ -84,7 +84,7 @@ class DownloadRepository(
         }
 
         val filename = "${storageManager.sanitizeFilename(info.title)}.${selectedFormat.container}"
-        val targetFile = storageManager.createDownloadFile(info.title, selectedFormat.container)
+        val targetFile = storageManager.createOriginalFile(info.title, selectedFormat.container)
 
         val initialEncodingStatus = if (preset == ProcessingPreset.DIRECT) {
             EncodingStatus.SKIPPED.name

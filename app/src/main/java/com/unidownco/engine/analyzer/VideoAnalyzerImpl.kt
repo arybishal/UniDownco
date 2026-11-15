@@ -36,9 +36,9 @@ class VideoAnalyzerImpl : VideoAnalyzer {
             var frameRate = 30.0
             var durationSeconds = 0L
             var bitDepth = 8
-            var colorPrimaries = "bt709"
-            var colorTransfer = "bt709"
-            var matrixCoefficients = "bt709"
+            var colorPrimaries = "unspecified"
+            var colorTransfer = "unspecified"
+            var matrixCoefficients = "unspecified"
             var hdrType = "SDR"
             var hasHdr10Metadata = false
             var hasHdr10PlusMetadata = false
@@ -100,7 +100,8 @@ class VideoAnalyzerImpl : VideoAnalyzer {
                         }
 
                         if (format.containsKey(MediaFormat.KEY_HDR_STATIC_INFO)) {
-                            hasHdr10Metadata = true
+                            val staticInfo = format.getByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO)
+                            hasHdr10Metadata = staticInfo != null && staticInfo.remaining() > 0
                         }
                     }
 
@@ -109,24 +110,49 @@ class VideoAnalyzerImpl : VideoAnalyzer {
                         val profile = format.getInteger(MediaFormat.KEY_PROFILE)
                         if (mime.equals("video/hevc", ignoreCase = true) && profile == 2) { // HEVCProfileMain10 = 2
                             bitDepth = 10
-                        } else if (mime.contains("vp9", ignoreCase = true) && profile >= 2) {
+                        } else if (mime.contains("vp9", ignoreCase = true) && (profile == 2 || profile == 3)) { // VP9 Profile 2 & 3 are 10/12-bit
+                            bitDepth = 10
+                        } else if (mime.contains("av01", ignoreCase = true) && profile >= 2) {
                             bitDepth = 10
                         }
                     }
 
-                    // Detect Dolby Vision
-                    if (mime.equals("video/dolby-vision", ignoreCase = true) || mime.contains("dolby", ignoreCase = true)) {
-                        hasDolbyVisionRpu = true
+                    // Strict HDR Classification based on CTA-861.3 & ITU-R BT.2100 standards
+                    val isBt2020 = colorPrimaries == "bt2020"
+                    val isPq = colorTransfer == "smpte2084"
+                    val isHlg = colorTransfer == "arib-std-b67"
+                    val is10Bit = bitDepth >= 10
+
+                    if (mime.equals("video/dolby-vision", ignoreCase = true)) {
                         hdrType = "DOLBY_VISION"
-                        dolbyVisionProfile = "Profile 8.1"
-                    } else if (colorTransfer == "smpte2084") {
+                        // Only report profile if explicitly present in track format; do not guess
+                        if (format.containsKey(MediaFormat.KEY_PROFILE)) {
+                            val profile = format.getInteger(MediaFormat.KEY_PROFILE)
+                            dolbyVisionProfile = "Profile $profile"
+                        } else {
+                            dolbyVisionProfile = null
+                        }
+                        hasDolbyVisionRpu = false // Cannot conclusively verify RPU presence without NAL bitstream parser
+                    } else if (isPq && isBt2020 && is10Bit && hasHdr10Metadata) {
+                        // Full HDR10 requires BT.2020 primaries, SMPTE ST 2084 PQ curve, 10-bit depth, and static metadata
                         hdrType = if (hasHdr10PlusMetadata) "HDR10+" else "HDR10"
-                        bitDepth = 10
-                    } else if (colorTransfer == "arib-std-b67") {
+                    } else if (isPq && isBt2020 && is10Bit && !hasHdr10Metadata) {
+                        // 10-bit BT.2020 PQ stream without static metadata (SMPTE ST 2086)
+                        hdrType = "PARTIAL_HDR"
+                    } else if (isHlg && isBt2020 && is10Bit) {
                         hdrType = "HLG"
-                        bitDepth = 10
-                    } else {
+                    } else if (isPq || isHlg || isBt2020) {
+                        // Incomplete or non-standard HDR signaling (e.g. PQ curve in 8-bit or with BT.709 primaries)
+                        hdrType = "PARTIAL_HDR"
+                    } else if (colorTransfer == "bt709" && (colorPrimaries == "bt709" || colorPrimaries == "bt601") && bitDepth == 8) {
                         hdrType = "SDR"
+                    } else if (colorTransfer == "unspecified" && colorPrimaries == "unspecified" && bitDepth == 8) {
+                        // Standard web media without explicit colr atom is implicit BT.709 SDR
+                        hdrType = "SDR"
+                    } else if (colorTransfer == "bt709" && colorPrimaries == "bt709") {
+                        hdrType = "SDR"
+                    } else {
+                        hdrType = "UNKNOWN"
                     }
                 } else if (mime.startsWith("audio/") && audioMime == "none") {
                     audioMime = mime

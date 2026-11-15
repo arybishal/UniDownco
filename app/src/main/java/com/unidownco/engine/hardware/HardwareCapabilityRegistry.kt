@@ -146,13 +146,20 @@ object HardwareCapabilityRegistry {
 
         if (hwSupportsMain10) {
             preferredProfile = CodecProfileLevel.HEVCProfileMain10
-            adaptation = "Full Hardware HEVC Main10 active (${preferredEncoder}). Native 10-bit HDR encoding enabled."
+            adaptation = "Full Hardware HEVC Main10 active ($preferredEncoder). Native 10-bit HDR encoding enabled."
         } else if (hwSupportsMain) {
             preferredProfile = CodecProfileLevel.HEVCProfileMain
-            adaptation = "Hardware HEVC Main (8-bit) active (${preferredEncoder}). SoC lacks Main10 in hardware. 10-bit software fallback available."
+            adaptation = if (swSupportsMain10) {
+                "Hardware HEVC Main (8-bit) active ($preferredEncoder). 10-bit Main10 available via software encoder."
+            } else {
+                "Hardware HEVC Main (8-bit) active ($preferredEncoder). 10-bit Main10 is unsupported on this SoC in hardware and software MediaCodec. HDR10 10-bit encoding is unsupported on this device."
+            }
+        } else if (swSupportsMain10) {
+            preferredProfile = CodecProfileLevel.HEVCProfileMain10
+            adaptation = "Software HEVC Main10 active ($preferredEncoder). No hardware HEVC encoder detected."
         } else {
             preferredProfile = CodecProfileLevel.HEVCProfileMain
-            adaptation = "Software HEVC active (${preferredEncoder})."
+            adaptation = "Software HEVC Main (8-bit) active ($preferredEncoder). 10-bit Main10 unsupported."
         }
 
         val capabilities = HardwareCapabilities(
@@ -194,10 +201,10 @@ object HardwareCapabilityRegistry {
             appendLine("Hardware HEVC Encoder: ${caps.hardwareEncoderName ?: "None"}")
             appendLine("Software HEVC Encoder: ${caps.softwareEncoderName ?: "None"}")
             appendLine("HW HEVC Main (8-bit): ${if (caps.supportsHardwareMain) "YES" else "NO"}")
-            appendLine("HW HEVC Main10 (10-bit): ${if (caps.supportsHardwareMain10) "YES (Flagship)" else "NO (8-bit HW only)"}")
-            appendLine("SW HEVC Main10: ${if (caps.supportsSoftwareMain10) "YES" else "NO"}")
+            appendLine("HW HEVC Main10 (10-bit): ${if (caps.supportsHardwareMain10) "YES (Flagship)" else "UNSUPPORTED"}")
+            appendLine("SW HEVC Main10 (MediaCodec): ${if (caps.supportsSoftwareMain10) "YES" else "UNSUPPORTED"}")
             appendLine("Surface Input (EGL/Zero-Copy): ${if (caps.supportsSurfaceInput) "YES" else "NO"}")
-            appendLine("10-bit P010 YUV: ${if (caps.supports10BitYuv) "YES" else "NO"}")
+            appendLine("10-bit P010 YUV: ${if (caps.supports10BitYuv) "YES" else "UNSUPPORTED"}")
             appendLine("Max Resolution: ${caps.maxWidth}x${caps.maxHeight} @ ${caps.maxFrameRate} FPS")
             appendLine("Bitrate Modes: ${caps.supportedBitrateModes.joinToString(", ")}")
             appendLine("Active Preferred Encoder: ${caps.preferredEncoderName}")
