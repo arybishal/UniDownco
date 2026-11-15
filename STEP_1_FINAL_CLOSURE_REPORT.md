@@ -159,15 +159,13 @@ Executed clean test run via `./gradlew.bat clean` and `./gradlew.bat testDebugUn
 
 ## 9. Git Repository & Remote Status
 
-- **Working Tree:** Clean (commit `311e3e3` + closure documentation).
-- **Remote:** `origin https://github.com/ibishalaryal/UniDownco.git`
+- **Working Tree:** Clean (commit `c1dd943`).
+- **Remote:** `origin https://github.com/arybishal/UniDownco.git`
 - **GitHub CLI User:** `arybishal`
-- **Remote Decision:** As instructed, no remote repository has been created automatically, and no force-push was performed. When the user chooses to publish, they can select visibility (Public vs. Private) and push via:
-  ```bash
-  gh repo create UniDownco --public --source=. --remote=origin --push
-  # or
-  gh repo create UniDownco --private --source=. --remote=origin --push
-  ```
+- **Remote Status:** Initialized and published as a **Private repository** per user explicit choice:
+  - Repository URL: https://github.com/arybishal/UniDownco
+  - Active tracking branch: `master` -> `origin/master`
+  - Verified online with complete commit tree.
 
 ---
 
