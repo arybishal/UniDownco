@@ -416,6 +416,19 @@ fun RecentTaskCard(item: DownloadItem) {
 
             UniStatusBadge(status = item.downloadStatus.name)
         }
+
+        if (!item.errorMessage.isNullOrBlank() && item.downloadStatus.name == "FAILED") {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = item.errorMessage!!,
+                style = AppTypography.bodySmall,
+                color = colors.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.errorBackground, UniShapes.BadgeShape)
+                    .padding(6.dp)
+            )
+        }
     }
 }
 

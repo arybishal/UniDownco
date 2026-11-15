@@ -2,6 +2,29 @@
 
 All notable changes to the UniDownco project will be documented in this file.
 
+## [1.0.2-step1.2] - 2026-11-15
+### Added
+- **Safe Non-Destructive Room Migration**:
+  - Replaced `.fallbackToDestructiveMigration()` with explicit `Migration(1, 2)` altering table `downloads` with `streamUrl TEXT` and `audioStreamUrl TEXT`.
+  - Added unit test `DatabaseMigrationTest` verifying SQL schema migration statements and version transitions.
+  - Verified database preservation on physical device across updates without user data loss.
+- **Extractor Provider Strategy Architecture**:
+  - Created `ExtractorProvider` interface and `ExtractionCapability` enum (`DIRECT_STREAMS`, `ADAPTIVE_STREAMS`, `AUDIO_ONLY`, `HDR_METADATA`, `SESSION_AUTH`, `JS_DECIPHER`).
+  - Implemented `NativeExtractorProvider` (priority 100) for zero-dependency native Kotlin extractors.
+  - Implemented `YtDlpExtractorProvider` (priority 50) as an architectural decoupling layer for yt-dlp execution (companion IPC or external engine), isolating GPL-3.0 copyleft code and avoiding Android 14/15/16 W^X binary restrictions.
+  - Refactored `UniversalExtractorRegistry` to coordinate prioritized multi-engine provider fallbacks.
+  - Added comprehensive provider unit tests in `ExtractorProviderTest`.
+- **Adaptive Stream Pairing in yt-dlp Bridge**:
+  - Enhanced `YtDlpExtractorBridge` to automatically pair video-only adaptive streams with the best available audio-only track, resolving silent downloads for DASH/adaptive streams.
+  - Added unit test `testParseYtDlpDumpJson_PairsAdaptiveVideoAndAudioStreams`.
+- **Platform Extraction Enhancements & Error Diagnostics**:
+  - **YouTube**: Added client attestation and `playabilityStatus` inspection to cleanly report bot-guard requirements.
+  - **Reddit**: Added direct `v.redd.it` stream discovery (`DASH_720.mp4` + `DASH_AUDIO_128.mp4`) and accurate HTTP 403 / PoW JS bot challenge diagnosis.
+  - **TikTok, Instagram, X/Twitter, Facebook**: Clean diagnostics for platform session authentication and bot gates with zero corrupt HTML downloads.
+  - **UI Diagnostics**: Displayed exact failure reason cards on `HomeScreen` and `QueueScreen` (e.g., HTTP 403, client attestation).
+- **Physical Device Verification (Redmi Note 25062RN2DA, Android 16 / API 36)**:
+  - Verified on-device intent sharing, platform badge detection across all 6 social platforms, direct MP4 downloading (`flower.mp4`, 1.1 MB), `AndroidMediaVerifier` validation, MediaStore gallery export, and playback.
+
 ## [1.0.1-step1.1] - 2026-11-15
 ### Added
 - **Physical Device Deployment & Verification**:

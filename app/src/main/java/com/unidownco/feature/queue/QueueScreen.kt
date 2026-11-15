@@ -208,6 +208,19 @@ fun QueueItemCard(
 
             Spacer(modifier = Modifier.height(UniSpacing.md))
 
+            if (!item.errorMessage.isNullOrBlank() && item.downloadStatus == DownloadStatus.FAILED) {
+                Text(
+                    text = item.errorMessage!!,
+                    style = AppTypography.bodySmall,
+                    color = colors.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.errorBackground, UniShapes.BadgeShape)
+                        .padding(8.dp)
+                )
+                Spacer(modifier = Modifier.height(UniSpacing.xs))
+            }
+
             // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),

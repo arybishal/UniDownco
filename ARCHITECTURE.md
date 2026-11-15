@@ -36,25 +36,41 @@ app/
 
 ---
 
-## 2. Downloader Engine Design
+## 2. Downloader Engine & Provider Architecture
 
-The extraction architecture uses a modular strategy pattern:
+The extraction engine uses an extensible multi-provider strategy architecture:
 ```
-VideoExtractor (Interface)
-  ├── YouTubeExtractor      (Innertube Android API & oembed)
-  ├── TikTokExtractor       (Direct stream extraction without watermark)
-  ├── InstagramExtractor    (Reels & Post embed stream parser)
-  ├── RedditExtractor       (v.redd.it DASH video and audio metadata)
-  ├── TwitterExtractor      (X syndication high-bitrate variants)
-  ├── FacebookExtractor     (HD & SD video endpoints)
-  └── GenericExtractor      (Direct links & OpenGraph video tags)
+ExtractorProvider (Interface)
+  ├── NativeExtractorProvider (Priority 100, Native Kotlin, zero GPL bloat)
+  │     ├── YouTubeExtractor      (Innertube API & oEmbed metadata)
+  │     ├── TikTokExtractor       (Direct stream extraction)
+  │     ├── InstagramExtractor    (Reels & Post embed stream parser)
+  │     ├── RedditExtractor       (v.redd.it DASH streams & audio pairing)
+  │     ├── TwitterExtractor      (X syndication high-bitrate variants)
+  │     ├── FacebookExtractor     (HD & SD video endpoints)
+  │     └── GenericExtractor      (Direct links & OpenGraph video tags)
+  │
+  └── YtDlpExtractorProvider  (Priority 50, Decoupled companion engine)
+        ├── IPC Companion Bridge  (Runs external yt-dlp service)
+        └── YtDlpExtractorBridge  (Maps schemas, pairs adaptive audio/video)
 ```
 
-The `UniversalExtractorRegistry` coordinates URL detection and routes extraction requests to the corresponding implementation with zero overhead.
+### Capabilities System (`ExtractionCapability`)
+Each provider reports supported capabilities per platform:
+- `DIRECT_STREAMS`: Direct single-file HTTP media streams.
+- `ADAPTIVE_STREAMS`: Separate video and audio elementary streams.
+- `AUDIO_ONLY`: Dedicated audio stream tracks.
+- `HDR_METADATA`: Extraction of color primaries, transfer functions, and dynamic range.
+- `SESSION_AUTH`: Authenticated requests and cookies.
+- `JS_DECIPHER`: JavaScript runtime to solve client signature ciphers.
+
+The `UniversalExtractorRegistry` coordinates URL detection and invokes providers in priority order with graceful fallback.
 
 ### Download Execution
 - **Chunked Streams**: 64KB buffer streaming via OkHttp.
 - **Resume Support**: Utilizes HTTP `Range: bytes=X-` and temporary `.part` file buffers.
+- **Lossless Muxing**: `MediaStreamMuxer` (native Android `MediaExtractor` + `MediaMuxer`) for DASH/adaptive streams.
+- **Hardware Media Verification**: `AndroidMediaVerifier` (`MediaMetadataRetriever`) validating audio/video tracks before completion.
 - **Speed & ETA**: Rolling time window metric calculations emitted every 500ms.
 - **Cancellation**: Full coroutine cancellation support with cleanup.
 
