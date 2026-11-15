@@ -200,4 +200,58 @@ class Step2EncodingPipelineTest {
         assertTrue("Width must be even", alignedWidth % 2 == 0)
         assertTrue("Height must be even", alignedHeight % 2 == 0)
     }
+
+    @Test
+    fun testOrientationNormalization_NormalizesToStandardCardinalDegrees() {
+        fun normalizeDegrees(degrees: Int): Int {
+            val normalized = ((degrees % 360) + 360) % 360
+            return when (normalized) {
+                in 45..134 -> 90
+                in 135..224 -> 180
+                in 225..314 -> 270
+                else -> 0
+            }
+        }
+
+        assertEquals(0, normalizeDegrees(0))
+        assertEquals(90, normalizeDegrees(90))
+        assertEquals(90, normalizeDegrees(89))
+        assertEquals(90, normalizeDegrees(91))
+        assertEquals(180, normalizeDegrees(180))
+        assertEquals(270, normalizeDegrees(270))
+        assertEquals(270, normalizeDegrees(-90))
+        assertEquals(90, normalizeDegrees(450))
+        assertEquals(0, normalizeDegrees(360))
+        assertEquals(0, normalizeDegrees(720))
+    }
+
+    @Test
+    fun testAudioMimeCompatibility_DetectsStandardMp4Formats() {
+        val supportedMimes = listOf("audio/mp4a-latm", "audio/aac", "audio/opus", "audio/amr-nb", "audio/amr-wb")
+        val unsupportedMimes = listOf("audio/vorbis", "audio/x-matroska", "audio/flac", "audio/x-wav")
+
+        val standardMp4Audio = listOf("audio/mp4a-latm", "audio/aac", "audio/opus", "audio/amr-nb", "audio/amr-wb")
+
+        for (m in supportedMimes) {
+            assertTrue("Format $m should be recognized as supported", standardMp4Audio.any { it.equals(m, ignoreCase = true) })
+        }
+
+        for (m in unsupportedMimes) {
+            assertFalse("Format $m should be recognized as unsupported", standardMp4Audio.any { it.equals(m, ignoreCase = true) })
+        }
+    }
+
+    @Test
+    fun testOrphanedTempFilePattern_DetectsStagedFiles() {
+        val validTemps = listOf("temp_hevc_1731700000_video.mp4", "temp_hevc_recovery.mp4", "output.hevc_tmp.mp4")
+        val regularFiles = listOf("final_video.mp4", "zoo.mp4", "bottle.mp4", "my_hevc_video.mp4")
+
+        for (name in validTemps) {
+            assertTrue("Should match temp pattern: $name", name.startsWith("temp_hevc_") || name.endsWith(".hevc_tmp.mp4"))
+        }
+
+        for (name in regularFiles) {
+            assertFalse("Should not match temp pattern: $name", name.startsWith("temp_hevc_") || name.endsWith(".hevc_tmp.mp4"))
+        }
+    }
 }

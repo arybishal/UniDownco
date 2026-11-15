@@ -13,6 +13,7 @@ data class ProcessingValidationReport(
     val hasAudioTrack: Boolean,
     val width: Int,
     val height: Int,
+    val rotationDegrees: Int = 0,
     val durationSeconds: Long,
     val fileSizeBytes: Long,
     val canDecodeBitmap: Boolean,
@@ -31,7 +32,8 @@ object ProcessingOutputValidator {
     fun validate(
         outputFile: File,
         expectedHasAudio: Boolean = false,
-        expectedDurationSeconds: Long? = null
+        expectedDurationSeconds: Long? = null,
+        expectedRotationDegrees: Int? = null
     ): ProcessingValidationReport {
         if (!outputFile.exists() || outputFile.length() == 0L) {
             val msg = "Output file does not exist or has 0 bytes: ${outputFile.name}"
@@ -43,6 +45,7 @@ object ProcessingOutputValidator {
                 hasAudioTrack = false,
                 width = 0,
                 height = 0,
+                rotationDegrees = 0,
                 durationSeconds = 0L,
                 fileSizeBytes = 0L,
                 canDecodeBitmap = false,
@@ -56,6 +59,7 @@ object ProcessingOutputValidator {
         var width = 0
         var height = 0
         var durationMs = 0L
+        var detectedRotation = 0
 
         val extractor = MediaExtractor()
         try {
@@ -153,17 +157,24 @@ object ProcessingOutputValidator {
             )
         }
 
-        // Perform bitmap decode check using MediaMetadataRetriever
+        // Perform bitmap decode check and metadata extraction using MediaMetadataRetriever
         var canDecode = false
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(outputFile.absolutePath)
             val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             canDecode = bitmap != null && bitmap.width > 0 && bitmap.height > 0
+            if (bitmap != null) {
+                try {
+                    bitmap.recycle() // Prevent native memory accumulation during sustained encoding
+                } catch (_: Exception) {}
+            }
             if (durationMs <= 0L) {
                 val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 durationMs = durStr?.toLongOrNull() ?: 0L
             }
+            val rotStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            detectedRotation = rotStr?.toIntOrNull() ?: 0
         } catch (e: Exception) {
             UniLog.w(TAG, "Frame decode probe failed: ${e.message}")
         } finally {
@@ -180,12 +191,22 @@ object ProcessingOutputValidator {
             }
         }
 
-        val isValid = hasVideo && isHevc && width > 0 && height > 0
+        var rotationValid = true
+        if (expectedRotationDegrees != null) {
+            val normalizedExpected = ((expectedRotationDegrees % 360) + 360) % 360
+            val normalizedDetected = ((detectedRotation % 360) + 360) % 360
+            if (normalizedExpected != normalizedDetected) {
+                UniLog.w(TAG, "Rotation mismatch: expected ${normalizedExpected}°, detected ${normalizedDetected}°")
+                rotationValid = false
+            }
+        }
+
+        val isValid = hasVideo && isHevc && width > 0 && height > 0 && rotationValid
 
         UniLog.i(
             TAG,
             "Validation result for ${outputFile.name}: valid=$isValid, hevc=$isHevc, " +
-            "res=${width}x${height}, dur=${durationSeconds}s, audio=$hasAudio, decodeProbe=$canDecode, size=${outputFile.length()} bytes"
+            "res=${width}x${height}, rot=${detectedRotation}°, dur=${durationSeconds}s, audio=$hasAudio, decodeProbe=$canDecode, size=${outputFile.length()} bytes"
         )
 
         return ProcessingValidationReport(
@@ -195,10 +216,11 @@ object ProcessingOutputValidator {
             hasAudioTrack = hasAudio,
             width = width,
             height = height,
+            rotationDegrees = detectedRotation,
             durationSeconds = durationSeconds,
             fileSizeBytes = outputFile.length(),
             canDecodeBitmap = canDecode,
-            errorDetails = if (isValid) null else "Validation checks failed"
+            errorDetails = if (isValid) null else if (!rotationValid) "Rotation mismatch (expected $expectedRotationDegrees°, got $detectedRotation°)" else "Validation checks failed"
         )
     }
 }

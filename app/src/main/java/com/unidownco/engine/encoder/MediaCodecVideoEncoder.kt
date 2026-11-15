@@ -57,6 +57,10 @@ class MediaCodecVideoEncoder(
         val alignedWidth = (width / 2) * 2
         val alignedHeight = (height / 2) * 2
 
+        if (alignedWidth < 16 || alignedHeight < 16) {
+            throw IllegalArgumentException("Target dimensions ${alignedWidth}x${alignedHeight} are below hardware encoder minimum (16x16)")
+        }
+
         // Calculate bitrate based on resolution, frame rate, and quality profile
         targetBitrate = calculateBitrate(alignedWidth, alignedHeight, fps, qualityProfile)
 

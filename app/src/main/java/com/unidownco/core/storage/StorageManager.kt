@@ -70,6 +70,32 @@ class StorageManager(private val context: Context) {
     }
 
     /**
+     * Cleans up orphaned temporary processing files left behind by interrupted transcodes or app force-stops.
+     * Searches downloadsDir and cacheDir for temp_hevc_* files.
+     * Returns count of orphaned files removed.
+     */
+    fun cleanOrphanedTempProcessingFiles(): Int {
+        var count = 0
+        val targetDirs = listOf(downloadsDir, context.cacheDir)
+        targetDirs.forEach { dir ->
+            try {
+                dir.listFiles()?.forEach { file ->
+                    if (file.isFile && (file.name.startsWith("temp_hevc_") || file.name.endsWith(".hevc_tmp.mp4"))) {
+                        val len = file.length()
+                        if (file.delete()) {
+                            count++
+                            UniLog.i("StorageManager", "Removed orphaned temp processing file: ${file.name} ($len bytes)")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                UniLog.w("StorageManager", "Error cleaning temp processing files in ${dir.name}: ${e.message}")
+            }
+        }
+        return count
+    }
+
+    /**
      * Purges original downloaded files from Movies/originals/ upon explicit user request.
      * Returns total bytes freed.
      */

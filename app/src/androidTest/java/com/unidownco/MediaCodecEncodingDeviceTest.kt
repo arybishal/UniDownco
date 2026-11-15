@@ -1,7 +1,12 @@
 package com.unidownco
 
+import android.content.Context
+import android.os.Build
+import android.os.PowerManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.unidownco.core.database.ProcessingJobEntity
+import com.unidownco.core.database.UniDownDatabase
 import com.unidownco.core.storage.StorageManager
 import com.unidownco.engine.encoder.QualityProfile
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
@@ -20,7 +25,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
 class MediaCodecEncodingDeviceTest {
@@ -269,5 +276,117 @@ class MediaCodecEncodingDeviceTest {
 
             dummyFile.delete()
         }
+    }
+
+    @Test
+    fun test08_SourceFileSha256ChecksumUntouched() {
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val sourceVideo = findVideoWithAudioOnDevice()
+            val beforeSha = computeSha256(sourceVideo)
+
+            val cacheDir = context.cacheDir
+            val outputFile = File(cacheDir, "test08_checksum_out.mp4")
+
+            val engine = VideoProcessingEngine(context = context)
+            val result = engine.encode(
+                sourceFile = sourceVideo,
+                outputFile = outputFile,
+                profile = QualityProfile.FAST
+            ) { _ -> }
+
+            assertTrue("Encoding should succeed: ${result.exceptionOrNull()?.message}", result.isSuccess)
+
+            val afterSha = computeSha256(sourceVideo)
+            assertEquals("Source file SHA-256 must remain identical before and after transcode", beforeSha, afterSha)
+
+            outputFile.delete()
+        }
+    }
+
+    @Test
+    fun test09_OrphanedTempFileCleanupOnDevice() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val storage = StorageManager(context)
+
+        // Create dummy orphaned temp files
+        val dummyTemp1 = File(storage.downloadsDir, "temp_hevc_simulated_crash_1.mp4")
+        dummyTemp1.writeText("simulated partial output")
+        val dummyTemp2 = File(context.cacheDir, "temp_hevc_simulated_crash_2.mp4")
+        dummyTemp2.writeText("simulated partial output")
+
+        assertTrue("Dummy temp 1 must exist", dummyTemp1.exists())
+        assertTrue("Dummy temp 2 must exist", dummyTemp2.exists())
+
+        val cleanedCount = storage.cleanOrphanedTempProcessingFiles()
+        assertTrue("At least 2 orphaned files should be cleaned", cleanedCount >= 2)
+        assertFalse("Dummy temp 1 must be deleted", dummyTemp1.exists())
+        assertFalse("Dummy temp 2 must be deleted", dummyTemp2.exists())
+    }
+
+    @Test
+    fun test10_ThermalStatusQueryOnDevice() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        assertNotNull("PowerManager should be accessible", powerManager)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val thermal = powerManager!!.currentThermalStatus
+            assertTrue("Thermal status should be in valid range (0..6)", thermal in 0..6)
+            // Xiaomi SM6225 normal operating condition
+            assertTrue("Device should not be in critical thermal shutdown during test", thermal < PowerManager.THERMAL_STATUS_SHUTDOWN)
+        }
+    }
+
+    @Test
+    fun test11_InterruptedJobReconciliationOnDevice() {
+        runBlocking {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val db = UniDownDatabase.getInstance(context)
+            val dao = db.processingJobDao()
+
+            val testDownloadId = 9999L
+            // Clean any pre-existing job for this test id
+            dao.deleteByDownloadId(testDownloadId)
+
+            val interruptedJob = ProcessingJobEntity(
+                downloadId = testDownloadId,
+                preset = "hdr10_enhanced",
+                targetCodec = "hevc",
+                targetHdrType = "SDR_BT709",
+                targetFps = 30,
+                stage = "ENCODING",
+                progressPercent = 42,
+                currentFps = 48.0,
+                startedAt = System.currentTimeMillis()
+            )
+            val id = dao.insertJob(interruptedJob)
+
+            val inserted = dao.getJobByDownloadId(testDownloadId)
+            assertNotNull(inserted)
+            assertEquals("ENCODING", inserted!!.stage)
+
+            // Simulate startup reconciliation
+            dao.failInterruptedJobs("Interrupted by application restart")
+
+            val reconciled = dao.getJobByDownloadId(testDownloadId)
+            assertNotNull(reconciled)
+            assertEquals("FAILED", reconciled!!.stage)
+            assertEquals("Interrupted by application restart", reconciled.errorMessage)
+
+            dao.deleteByDownloadId(testDownloadId)
+        }
+    }
+
+    private fun computeSha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { fis ->
+            val buf = ByteArray(64 * 1024)
+            var n: Int
+            while (fis.read(buf).also { n = it } != -1) {
+                digest.update(buf, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }

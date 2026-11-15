@@ -37,6 +37,12 @@ class UniDownApplication : Application() {
             } catch (e: Exception) {
                 UniLog.e("HardwareProfile", "Failed to probe hardware capabilities", e)
             }
+            try {
+                // Initialize ProcessingJobRepository to reconcile interrupted jobs and clean orphaned temp files
+                com.unidownco.data.repository.ProcessingJobRepository.getInstance(this@UniDownApplication)
+            } catch (e: Exception) {
+                UniLog.e("UniDownApp", "Failed initializing ProcessingJobRepository on startup", e)
+            }
         }
     }
 

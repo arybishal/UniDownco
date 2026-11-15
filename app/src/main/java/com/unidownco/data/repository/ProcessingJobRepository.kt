@@ -202,7 +202,8 @@ class ProcessingJobRepository(
         try {
             // Processing jobs stuck in transitional stages are safely marked FAILED on app restart
             processingJobDao.failInterruptedJobs("Interrupted by application restart")
-            UniLog.i(tag, "Reconciled processing jobs on startup")
+            val cleanedFiles = storageManager.cleanOrphanedTempProcessingFiles()
+            UniLog.i(tag, "Reconciled processing jobs on startup: cleaned $cleanedFiles orphaned temp files")
         } catch (e: Exception) {
             UniLog.w(tag, "Failed reconciling processing jobs on startup: ${e.message}")
         }
@@ -216,11 +217,14 @@ class ProcessingJobRepository(
             return instance ?: synchronized(this) {
                 instance ?: run {
                     val db = UniDownDatabase.getInstance(context)
+                    val storage = StorageManager(context.applicationContext)
+                    val engine = VideoProcessingEngine(context = context.applicationContext)
                     ProcessingJobRepository(
                         context = context.applicationContext,
                         processingJobDao = db.processingJobDao(),
                         downloadDao = db.downloadDao(),
-                        storageManager = StorageManager(context.applicationContext)
+                        storageManager = storage,
+                        engine = engine
                     ).also { instance = it }
                 }
             }

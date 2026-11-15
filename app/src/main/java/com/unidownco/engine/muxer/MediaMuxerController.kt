@@ -27,6 +27,15 @@ class MediaMuxerController(
     private var expectedTrackCount = 1
     private var registeredTrackCount = 0
 
+    var lastVideoPtsUs = -1L
+        private set
+    var lastAudioPtsUs = -1L
+        private set
+    var writtenVideoSampleCount = 0L
+        private set
+    var writtenAudioSampleCount = 0L
+        private set
+
     private val lock = Any()
 
     init {
@@ -47,13 +56,21 @@ class MediaMuxerController(
 
     /**
      * Sets display orientation hint (0, 90, 180, 270 degrees) before start.
+     * Normalizes arbitrary degrees to the nearest standard orientation.
      */
     fun setOrientationHint(degrees: Int) {
         synchronized(lock) {
             if (!isStarted && !isReleased) {
+                val normalized = ((degrees % 360) + 360) % 360
+                val validDegrees = when (normalized) {
+                    in 45..134 -> 90
+                    in 135..224 -> 180
+                    in 225..314 -> 270
+                    else -> 0
+                }
                 try {
-                    muxer?.setOrientationHint(degrees)
-                    UniLog.d(tag, "Set orientation hint: $degrees°")
+                    muxer?.setOrientationHint(validDegrees)
+                    UniLog.d(tag, "Set orientation hint: $validDegrees° (from raw $degrees°)")
                 } catch (e: Exception) {
                     UniLog.w(tag, "Failed to set orientation hint: ${e.message}")
                 }
@@ -108,15 +125,24 @@ class MediaMuxerController(
     }
 
     /**
-     * Writes video sample data to MediaMuxer.
+     * Writes video sample data to MediaMuxer, enforcing timestamp monotonicity.
      */
     fun writeVideoSample(byteBuffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
         synchronized(lock) {
             if (!isStarted || isReleased || videoTrackIndex == -1) return
-            if (bufferInfo.size < 0) return
+            if (bufferInfo.size <= 0) return
+
+            // Enforce non-negative and strictly monotonic presentation timestamps
+            var pts = bufferInfo.presentationTimeUs.coerceAtLeast(0L)
+            if (pts <= lastVideoPtsUs) {
+                pts = lastVideoPtsUs + 1_000L // Advance 1ms to preserve strict monotonicity
+            }
+            bufferInfo.presentationTimeUs = pts
+            lastVideoPtsUs = pts
 
             try {
                 muxer?.writeSampleData(videoTrackIndex, byteBuffer, bufferInfo)
+                writtenVideoSampleCount++
             } catch (e: Exception) {
                 UniLog.e(tag, "Error writing video sample at PTS ${bufferInfo.presentationTimeUs} us", e)
                 throw e
@@ -125,15 +151,24 @@ class MediaMuxerController(
     }
 
     /**
-     * Writes audio sample data to MediaMuxer.
+     * Writes audio sample data to MediaMuxer, enforcing timestamp monotonicity.
      */
     fun writeAudioSample(byteBuffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
         synchronized(lock) {
             if (!isStarted || isReleased || audioTrackIndex == -1) return
-            if (bufferInfo.size < 0) return
+            if (bufferInfo.size <= 0) return
+
+            // Enforce non-negative and strictly monotonic presentation timestamps
+            var pts = bufferInfo.presentationTimeUs.coerceAtLeast(0L)
+            if (pts <= lastAudioPtsUs) {
+                pts = lastAudioPtsUs + 1_000L // Advance 1ms to preserve strict monotonicity
+            }
+            bufferInfo.presentationTimeUs = pts
+            lastAudioPtsUs = pts
 
             try {
                 muxer?.writeSampleData(audioTrackIndex, byteBuffer, bufferInfo)
+                writtenAudioSampleCount++
             } catch (e: Exception) {
                 UniLog.e(tag, "Error writing audio sample at PTS ${bufferInfo.presentationTimeUs} us", e)
                 throw e

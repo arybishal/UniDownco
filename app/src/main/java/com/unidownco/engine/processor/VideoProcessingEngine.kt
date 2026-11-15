@@ -1,7 +1,10 @@
 package com.unidownco.engine.processor
 
+import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.Build
+import android.os.PowerManager
 import com.unidownco.core.logging.UniLog
 import com.unidownco.engine.audio.AudioTrackProcessor
 import com.unidownco.engine.decoder.MediaCodecVideoDecoder
@@ -23,6 +26,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 
 /**
  * Production-quality Android MediaCodec hardware-accelerated HEVC video processing engine.
@@ -30,7 +34,8 @@ import java.io.FileOutputStream
  * passes lossless audio tracks through, enforces backpressure, and performs post-processing validation.
  */
 class VideoProcessingEngine(
-    private val capabilities: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities()
+    private val capabilities: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities(),
+    private val context: Context? = null
 ) : VideoEncoder {
 
     private val tag = "VideoProcessingEngine"
@@ -54,7 +59,8 @@ class VideoProcessingEngine(
             )
         }
 
-        UniLog.i(tag, "Starting HEVC hardware transcode: ${sourceFile.name} -> ${outputFile.name}")
+        val sourceChecksumBefore = computeSha256(sourceFile)
+        UniLog.i(tag, "Starting HEVC hardware transcode: ${sourceFile.name} (SHA-256: ${sourceChecksumBefore.take(12)}...) -> ${outputFile.name}")
 
         var tempOutputFile: File? = null
         var videoExtractor: MediaExtractor? = null
@@ -137,6 +143,11 @@ class VideoProcessingEngine(
 
             // Probe audio track
             audioProcessor = AudioTrackProcessor(sourceFile)
+            if (audioProcessor.hasAudioTrack && !audioProcessor.isFormatSupportedForMp4) {
+                return@withContext Result.failure(
+                    IllegalStateException(audioProcessor.unsupportedFormatReason ?: "Unsupported audio format for MP4 muxing")
+                )
+            }
 
             // Setup temporary output file to ensure original is protected
             val parentDir = outputFile.parentFile ?: sourceFile.parentFile ?: File(".")
@@ -191,11 +202,24 @@ class VideoProcessingEngine(
             var framesSinceLastFps = 0L
             var currentFps = 0.0
             var isEncoderEosSignaled = false
+            var emptyEosDrainCycles = 0
+            val maxEmptyEosCycles = 300 // ~6 seconds max drain timeout after EOS signaled
+
+            val powerManager = context?.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
             while (!enc.isEncoderEosReached) {
                 currentCoroutineContext().ensureActive()
 
                 var madeProgress = false
+
+                // Thermal check
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && powerManager != null) {
+                    val thermal = powerManager.currentThermalStatus
+                    if (thermal >= PowerManager.THERMAL_STATUS_SEVERE) {
+                        UniLog.w(tag, "Device thermal status is SEVERE ($thermal). Applying safety backpressure.")
+                        Thread.sleep(10)
+                    }
+                }
 
                 // 1. Feed decoder input from extractor
                 if (!dec.isInputEos) {
@@ -221,7 +245,16 @@ class VideoProcessingEngine(
 
                 // 4. Drain encoder output buffers into MediaMuxer
                 val drained = enc.drainEncoder(muxer, timeoutUs = 5_000L)
-                if (drained) madeProgress = true
+                if (drained) {
+                    madeProgress = true
+                    emptyEosDrainCycles = 0
+                } else if (isEncoderEosSignaled) {
+                    emptyEosDrainCycles++
+                    if (emptyEosDrainCycles > maxEmptyEosCycles) {
+                        UniLog.w(tag, "Encoder drain timeout reached after EOS ($emptyEosDrainCycles empty cycles). Concluding encoding stage.")
+                        break
+                    }
+                }
 
                 // 5. Transfer audio in lockstep with video PTS
                 if (audioProcessor.hasAudioTrack && muxer.isStarted()) {
@@ -295,7 +328,8 @@ class VideoProcessingEngine(
             val validation = ProcessingOutputValidator.validate(
                 outputFile = tempOutputFile,
                 expectedHasAudio = audioProcessor.hasAudioTrack,
-                expectedDurationSeconds = durationUs / 1_000_000L
+                expectedDurationSeconds = durationUs / 1_000_000L,
+                expectedRotationDegrees = rotationDegrees
             )
 
             if (!validation.isValid) {
@@ -306,7 +340,7 @@ class VideoProcessingEngine(
             }
 
             // -----------------------------------------------------------------
-            // STAGE 5: COMPLETED - Atomic Rename to Destination
+            // STAGE 5: COMPLETED - Atomic Promotion to Destination
             // -----------------------------------------------------------------
             if (outputFile.exists()) {
                 outputFile.delete()
@@ -319,6 +353,16 @@ class VideoProcessingEngine(
 
             val durationSeconds = validation.durationSeconds
             val finalSizeBytes = outputFile.length()
+
+            // Verify source file integrity was 100% preserved
+            val sourceChecksumAfter = computeSha256(sourceFile)
+            if (sourceChecksumBefore != "unknown" && sourceChecksumAfter != "unknown") {
+                if (sourceChecksumBefore != sourceChecksumAfter) {
+                    UniLog.e(tag, "CRITICAL: Source file modified during transcode ($sourceChecksumBefore vs $sourceChecksumAfter)")
+                } else {
+                    UniLog.i(tag, "Verified source file integrity preserved: $sourceChecksumBefore")
+                }
+            }
 
             onProgress(
                 EncodingProgress(
@@ -333,7 +377,7 @@ class VideoProcessingEngine(
             UniLog.i(
                 tag,
                 "Transcode COMPLETED in ${elapsedTotalSec}s: ${outputFile.name} " +
-                "(${finalSizeBytes / 1024} KB, ${validation.width}x${validation.height}, " +
+                "(${finalSizeBytes / 1024} KB, ${validation.width}x${validation.height}, rot=${validation.rotationDegrees}°, " +
                 "${enc.actualProfile}, avg FPS=${(enc.encodedFrameCount / elapsedTotalSec.coerceAtLeast(0.1)).toInt()})"
             )
 
@@ -368,6 +412,26 @@ class VideoProcessingEngine(
                 input.copyTo(output)
             }
         }
-        source.delete()
+        if (destination.exists() && destination.length() == source.length()) {
+            source.delete()
+        } else {
+            throw IllegalStateException("Failed copying temporary file to destination: size mismatch or copy failed")
+        }
+    }
+
+    private fun computeSha256(file: File): String {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            FileInputStream(file).use { fis ->
+                val buf = ByteArray(64 * 1024)
+                var n: Int
+                while (fis.read(buf).also { n = it } != -1) {
+                    digest.update(buf, 0, n)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            "unknown"
+        }
     }
 }

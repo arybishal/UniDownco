@@ -22,6 +22,10 @@ class AudioTrackProcessor(
         private set
     var audioFormat: MediaFormat? = null
         private set
+    var isFormatSupportedForMp4: Boolean = true
+        private set
+    var unsupportedFormatReason: String? = null
+        private set
 
     val hasAudioTrack: Boolean
         get() = audioTrackIndex != -1 && audioFormat != null
@@ -56,17 +60,30 @@ class AudioTrackProcessor(
             }
 
             if (audioTrackIndex != -1 && audioFormat != null) {
+                val mime = audioFormat!!.getString(MediaFormat.KEY_MIME) ?: ""
+                val supportedMp4Audio = listOf(
+                    MediaFormat.MIMETYPE_AUDIO_AAC,
+                    "audio/mp4a-latm",
+                    "audio/opus",
+                    MediaFormat.MIMETYPE_AUDIO_AMR_NB,
+                    MediaFormat.MIMETYPE_AUDIO_AMR_WB
+                )
+                if (!supportedMp4Audio.any { it.equals(mime, ignoreCase = true) }) {
+                    isFormatSupportedForMp4 = false
+                    unsupportedFormatReason = "Audio MIME type '$mime' is not supported by standard Android MP4 MediaMuxer"
+                    UniLog.w(tag, unsupportedFormatReason!!)
+                }
+
                 val maxInputSize = if (audioFormat!!.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-                    audioFormat!!.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE).coerceAtLeast(128 * 1024)
+                    audioFormat!!.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE).coerceAtLeast(256 * 1024)
                 } else {
-                    128 * 1024
+                    256 * 1024
                 }
                 audioBuffer = ByteBuffer.allocateDirect(maxInputSize)
                 extractor = ext
-                val mime = audioFormat!!.getString(MediaFormat.KEY_MIME)
                 val channels = if (audioFormat!!.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) audioFormat!!.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
                 val sampleRate = if (audioFormat!!.containsKey(MediaFormat.KEY_SAMPLE_RATE)) audioFormat!!.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
-                UniLog.i(tag, "Audio track found: $mime ($channels ch, $sampleRate Hz)")
+                UniLog.i(tag, "Audio track found: $mime ($channels ch, $sampleRate Hz, supported=$isFormatSupportedForMp4)")
             } else {
                 UniLog.i(tag, "No audio track found in ${sourceFile.name} (video-only stream)")
                 ext.release()
