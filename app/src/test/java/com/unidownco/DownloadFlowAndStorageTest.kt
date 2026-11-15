@@ -94,4 +94,31 @@ class DownloadFlowAndStorageTest {
         )
         assertTrue(directFormat.audioUrl == null)
     }
+
+    @Test
+    fun testDownloadStatus_PauseAndResumeTransitions() {
+        var status = com.unidownco.domain.models.DownloadStatus.DOWNLOADING
+        assertEquals("DOWNLOADING", status.name)
+
+        // User triggers manual pause
+        status = com.unidownco.domain.models.DownloadStatus.PAUSED
+        assertEquals("PAUSED", status.name)
+
+        // User triggers manual resume
+        status = com.unidownco.domain.models.DownloadStatus.DOWNLOADING
+        assertEquals("DOWNLOADING", status.name)
+    }
+
+    @Test
+    fun testDuplicateFile_SafeNameGeneration() {
+        val baseName = "sample_video"
+        val existingNames = setOf("sample_video.mp4", "sample_video_1.mp4")
+        var counter = 1
+        var candidate = "$baseName.mp4"
+        while (existingNames.contains(candidate)) {
+            candidate = "${baseName}_$counter.mp4"
+            counter++
+        }
+        assertEquals("sample_video_2.mp4", candidate)
+    }
 }

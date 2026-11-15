@@ -41,6 +41,16 @@ class DownloadRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeJobs = ConcurrentHashMap<Long, Job>()
 
+    init {
+        scope.launch {
+            try {
+                downloadDao.pauseAllActiveDownloads()
+            } catch (e: Exception) {
+                UniLog.e("DownloadRepository", "Failed to reconcile active downloads on startup", e)
+            }
+        }
+    }
+
     fun getAllDownloads(): Flow<List<DownloadItem>> =
         downloadDao.getAllDownloads().map { list -> list.map { it.toDomain() } }
 
