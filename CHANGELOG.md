@@ -2,6 +2,26 @@
 
 All notable changes to the UniDownco project will be documented in this file.
 
+## [1.0.1-step1.1] - 2026-11-15
+### Added
+- **Physical Device Deployment & Verification**:
+  - Connected and verified target Android device via ADB (`25062RN2DA`, Android 16 / API 36).
+  - Deployed debug APK `app-debug.apk` and verified Scoped Storage export to `/sdcard/Movies/UniversalHDR/`.
+- **Audio/Video Stream Separation & Muxing**:
+  - Implemented `MediaStreamMuxer` using Android native `MediaExtractor` and `MediaMuxer` for lossless elementary stream remuxing without third-party dependencies.
+  - Implemented concurrent/dual-stream download in `DownloadEngine` when `format.audioUrl` is present.
+  - Configured adaptive format stream pairing in `YouTubeExtractor` and `RedditExtractor`.
+- **Hardware-Level Media Verification**:
+  - Implemented `AndroidMediaVerifier` using `MediaMetadataRetriever` to verify container headers (MP4/MKV/WebM), track presence, video resolution, and duration before marking downloads completed.
+  - Successfully catches and rejects corrupt downloads and HTML error pages.
+- **Extractor Robustness**:
+  - Removed deceptive fallback formats that passed web page URLs as fake MP4s across YouTube, TikTok, Instagram, Reddit, X/Twitter, and Facebook extractors.
+  - Standardized clear, actionable error messages for platform auth gates, bot protections, and signature deciphering requirements.
+- **Testing & Persistence**:
+  - Added `MuxerAndVerifierTest` for format option detection and verifier boundary testing.
+  - Added on-device instrumented test `MediaStreamMuxerDeviceTest`.
+  - Upgraded Room database schema to version 2 with `streamUrl` and `audioStreamUrl` persistence for robust pause/resume.
+
 ## [1.0.0-step1] - 2026-11-15
 ### Added
 - **Project Foundation**:
