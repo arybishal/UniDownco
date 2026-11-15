@@ -20,6 +20,8 @@ import com.unidownco.domain.models.ProcessingPreset
 import com.unidownco.domain.models.VideoExtractionInfo
 import com.unidownco.engine.analyzer.VideoAnalyzerImpl
 import com.unidownco.engine.downloader.DownloadEngine
+import com.unidownco.engine.instagram.InstagramDownloadEngine
+import com.unidownco.engine.instagram.InstagramUrlResolver
 import com.unidownco.engine.verifier.AndroidMediaVerifier
 import com.unidownco.engine.verifier.MediaVerifier
 import com.yausername.youtubedl_android.YoutubeDL
@@ -40,6 +42,7 @@ class DownloadRepository(
     private val storageManager: StorageManager,
     private val extractorRegistry: UniversalExtractorRegistry = UniversalExtractorRegistry(),
     private val downloadEngine: DownloadEngine = DownloadEngine(),
+    private val instagramDownloadEngine: InstagramDownloadEngine = InstagramDownloadEngine(downloadEngine),
     private val verifier: MediaVerifier = AndroidMediaVerifier()
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -152,27 +155,52 @@ class DownloadRepository(
                 downloadDao.updateStatus(downloadId, DownloadStatus.DOWNLOADING.name)
                 DownloadForegroundService.start(context, downloadId, title)
 
-                val result = downloadEngine.downloadStream(
-                    format = format,
-                    destinationFile = targetFile,
-                    originalUrl = originalUrl,
-                    downloadId = downloadId
-                ) { progress ->
-                    downloadDao.updateProgress(
-                        id = downloadId,
-                        downloadedBytes = progress.downloadedBytes,
-                        progress = progress.progressPercent,
-                        speed = progress.speedBytesPerSec,
-                        eta = progress.etaSeconds
-                    )
+                val result = if (originalUrl != null && InstagramUrlResolver.isInstagramUrl(originalUrl)) {
+                    instagramDownloadEngine.downloadStream(
+                        format = format,
+                        destinationFile = targetFile,
+                        originalUrl = originalUrl,
+                        downloadId = downloadId
+                    ) { progress ->
+                        downloadDao.updateProgress(
+                            id = downloadId,
+                            downloadedBytes = progress.downloadedBytes,
+                            progress = progress.progressPercent,
+                            speed = progress.speedBytesPerSec,
+                            eta = progress.etaSeconds
+                        )
 
-                    DownloadForegroundService.updateProgress(
-                        context = context,
-                        downloadId = downloadId,
-                        title = title,
-                        progress = progress.progressPercent,
-                        speed = "${progress.progressPercent}% (${progress.speedBytesPerSec / 1024} KB/s)"
-                    )
+                        DownloadForegroundService.updateProgress(
+                            context = context,
+                            downloadId = downloadId,
+                            title = title,
+                            progress = progress.progressPercent,
+                            speed = "${progress.progressPercent}% (${progress.speedBytesPerSec / 1024} KB/s)"
+                        )
+                    }
+                } else {
+                    downloadEngine.downloadStream(
+                        format = format,
+                        destinationFile = targetFile,
+                        originalUrl = originalUrl,
+                        downloadId = downloadId
+                    ) { progress ->
+                        downloadDao.updateProgress(
+                            id = downloadId,
+                            downloadedBytes = progress.downloadedBytes,
+                            progress = progress.progressPercent,
+                            speed = progress.speedBytesPerSec,
+                            eta = progress.etaSeconds
+                        )
+
+                        DownloadForegroundService.updateProgress(
+                            context = context,
+                            downloadId = downloadId,
+                            title = title,
+                            progress = progress.progressPercent,
+                            speed = "${progress.progressPercent}% (${progress.speedBytesPerSec / 1024} KB/s)"
+                        )
+                    }
                 }
 
                 if (result.isSuccess) {

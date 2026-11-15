@@ -183,7 +183,7 @@ class DownloadEngine {
         }
     }
 
-    private suspend fun downloadSingleStream(
+    internal suspend fun downloadSingleStream(
         streamUrl: String,
         estimatedBytes: Long,
         destinationFile: File,

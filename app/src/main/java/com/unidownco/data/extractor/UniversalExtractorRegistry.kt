@@ -5,6 +5,7 @@ import com.unidownco.data.provider.ExtractorProvider
 import com.unidownco.data.provider.NativeExtractorProvider
 import com.unidownco.data.provider.YtDlpExtractorProvider
 import com.unidownco.domain.models.VideoExtractionInfo
+import com.unidownco.engine.instagram.InstagramMediaExtractor
 
 /**
  * Universal Extractor Registry coordinating extraction providers in priority order.
@@ -15,12 +16,14 @@ class UniversalExtractorRegistry(
 ) {
     private val nativeProvider = NativeExtractorProvider()
     private val ytDlpProvider = YtDlpExtractorProvider()
+    private val instagramProvider = InstagramMediaExtractor()
     private val providers = mutableListOf<ExtractorProvider>()
 
     init {
         if (customProviders != null) {
             providers.addAll(customProviders)
         } else {
+            providers.add(instagramProvider)
             providers.add(ytDlpProvider)
             providers.add(nativeProvider)
         }
