@@ -44,7 +44,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun onExportToGallery(item: DownloadItem) {
         val uri = repository.exportToGallery(item)
         if (uri != null) {
-            Toast.makeText(getApplication(), "Saved to Movies/UniversalHDR in Gallery!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(getApplication(), "Saved to ${StorageManager.RELATIVE_MOVIES_PATH} in Gallery!", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(getApplication(), "Failed to export video.", Toast.LENGTH_SHORT).show()
         }

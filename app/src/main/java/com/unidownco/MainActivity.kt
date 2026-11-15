@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.unidownco.core.design.components.UniBottomNavBar
 import com.unidownco.core.design.components.UniNavTab
 import com.unidownco.core.design.theme.UniDownTheme
+import com.unidownco.core.logging.UniLog
 import com.unidownco.feature.details.VideoDetailsScreen
 import com.unidownco.feature.home.HomeScreen
 import com.unidownco.feature.home.HomeViewModel
@@ -67,15 +68,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleShareIntent(intent)
     }
 
     private fun handleShareIntent(intent: Intent?) {
         if (intent == null) return
-        if (Intent.ACTION_SEND == intent.action && "text/plain" == intent.type) {
+        val action = intent.action
+        val type = intent.type
+        val isShare = Intent.ACTION_SEND == action && (type == null || type.startsWith("text/"))
+
+        if (isShare) {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             val autoDownload = intent.getBooleanExtra("auto_download", settingsViewModel.uiState.value.autoDownloadOnShare)
-            android.util.Log.i("MainActivity", "handleShareIntent: sharedText=$sharedText, autoDownload=$autoDownload")
+            UniLog.i("MainActivity", "handleShareIntent: sharedText='$sharedText', autoDownload=$autoDownload")
             if (!sharedText.isNullOrBlank()) {
                 homeViewModel.onUrlChanged(sharedText)
                 homeViewModel.onStartAnalysis(targetUrl = sharedText, autoDownload = autoDownload)

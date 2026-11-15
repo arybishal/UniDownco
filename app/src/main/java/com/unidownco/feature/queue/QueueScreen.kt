@@ -40,7 +40,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.unidownco.core.common.Formatters
+import com.unidownco.core.design.components.UniAccentButton
 import com.unidownco.core.design.components.UniCard
+import com.unidownco.core.design.components.UniDestructiveButton
 import com.unidownco.core.design.components.UniOutlinedButton
 import com.unidownco.core.design.components.UniPrimaryButton
 import com.unidownco.core.design.components.UniProgressBar
@@ -237,28 +239,28 @@ fun QueueItemCard(
                         Text("PAUSE", style = AppTypography.labelSmall)
                     }
                 } else if (item.downloadStatus == DownloadStatus.PAUSED) {
-                    UniPrimaryButton(
+                    UniAccentButton(
                         onClick = onResume,
                         modifier = Modifier.height(38.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("RESUME", style = AppTypography.labelSmall)
+                        Text("RESUME", style = AppTypography.labelSmall, color = Color.Black)
                     }
                 } else if (item.downloadStatus == DownloadStatus.FAILED) {
-                    UniPrimaryButton(
+                    UniAccentButton(
                         onClick = onRetry,
                         modifier = Modifier.height(38.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("RETRY", style = AppTypography.labelSmall)
+                        Text("RETRY", style = AppTypography.labelSmall, color = Color.Black)
                     }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                UniOutlinedButton(
+                UniDestructiveButton(
                     onClick = onCancel,
                     modifier = Modifier.height(38.dp)
                 ) {

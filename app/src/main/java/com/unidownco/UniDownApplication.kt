@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import com.unidownco.core.logging.UniLog
 import com.unidownco.core.network.DownloadForegroundService
 import com.unidownco.engine.ytdlp.YtDlpEngineManager
 
@@ -21,6 +22,7 @@ class UniDownApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         appContext = applicationContext
+        UniLog.init(this)
         createNotificationChannels()
         YtDlpEngineManager.init(this)
     }

@@ -9,6 +9,7 @@ import com.unidownco.core.common.Platform
 import com.unidownco.core.common.Resource
 import com.unidownco.core.common.UrlValidator
 import com.unidownco.core.database.UniDownDatabase
+import com.unidownco.core.logging.UniLog
 import com.unidownco.core.storage.StorageManager
 import com.unidownco.data.repository.DownloadRepository
 import com.unidownco.domain.models.DownloadItem
@@ -86,7 +87,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun onStartAnalysis(targetUrl: String? = null, autoDownload: Boolean = false) {
         val url = targetUrl ?: _uiState.value.urlInput
         val validation = UrlValidator.validateAndExtract(url)
-        android.util.Log.i("HomeViewModel", "onStartAnalysis: url=$url, isValid=${validation.isValid}, autoDownload=$autoDownload")
+        UniLog.i("HomeViewModel", "onStartAnalysis: url=$url, isValid=${validation.isValid}, autoDownload=$autoDownload")
         if (!validation.isValid) {
             _uiState.value = _uiState.value.copy(extractionError = validation.errorMessage ?: "Invalid URL")
             return
@@ -97,7 +98,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             when (val res = repository.extractMetadata(validation.sanitizedUrl)) {
                 is Resource.Success -> {
                     val info = res.data
-                    android.util.Log.i("HomeViewModel", "Extraction SUCCESS: title=${info.title}, formats=${info.formats.size}")
+                    UniLog.i("HomeViewModel", "Extraction SUCCESS: title=${info.title}, formats=${info.formats.size}")
                     val defaultFormat = info.formats.firstOrNull { it.isBestQuality }
                         ?: info.formats.firstOrNull()
                     _uiState.value = _uiState.value.copy(
@@ -109,15 +110,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     if (autoDownload && defaultFormat != null) {
                         try {
                             val id = repository.enqueueDownload(info, defaultFormat)
-                            android.util.Log.i("HomeViewModel", "Download ENQUEUED: id=$id")
+                            UniLog.i("HomeViewModel", "Download ENQUEUED: id=$id (auto)")
                         } catch (e: Exception) {
-                            android.util.Log.e("HomeViewModel", "Failed to enqueue download", e)
+                            UniLog.e("HomeViewModel", "Failed to enqueue download", e)
                             _uiState.value = _uiState.value.copy(extractionError = e.message)
                         }
                     }
                 }
                 is Resource.Error -> {
-                    android.util.Log.e("HomeViewModel", "Extraction ERROR: ${res.message}")
+                    UniLog.e("HomeViewModel", "Extraction ERROR: ${res.message}")
                     _uiState.value = _uiState.value.copy(
                         isExtracting = false,
                         extractionError = res.message
@@ -131,6 +132,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onSelectFormat(format: FormatOption) {
+        UniLog.d("HomeViewModel", "User selected format: ${format.resolution} (${format.formatId}, container=${format.container})")
         _uiState.value = _uiState.value.copy(selectedFormat = format)
     }
 
@@ -142,9 +144,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val info = _uiState.value.extractedInfo ?: return
         val format = _uiState.value.selectedFormat ?: info.formats.firstOrNull() ?: return
 
+        UniLog.i("HomeViewModel", "Confirming download for '${info.title}' format=${format.resolution} (id=${format.formatId})")
         viewModelScope.launch {
             try {
-                repository.enqueueDownload(info, format)
+                val id = repository.enqueueDownload(info, format)
+                UniLog.i("HomeViewModel", "Download successfully enqueued with id=$id")
                 _uiState.value = _uiState.value.copy(
                     showFormatSheet = false,
                     urlInput = "",
@@ -154,6 +158,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 updateStorageMetrics()
             } catch (e: Exception) {
+                UniLog.e("HomeViewModel", "Failed to enqueue download", e)
                 _uiState.value = _uiState.value.copy(extractionError = e.message)
             }
         }

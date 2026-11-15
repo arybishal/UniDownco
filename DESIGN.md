@@ -102,17 +102,33 @@ Screen padding standard: **16dp** horizontal edge margin, **24dp** vertical sect
 ## 5. Component Patterns
 
 ### Primary Button
+- Background: `#000000` (Black in Light mode, White in Dark mode)
+- Text / Icon: `#FFFFFF` (Bold)
+- Border: 1dp solid `#000000`
+- Corner radius: `10dp`
+- Padding: `16dp` horizontal, `12dp` vertical
+- Role: Primary screen actions, analysis triggers, modal confirmations.
+
+### Accent Button (Signature Action)
 - Background: `#FFD429` (Signature Yellow)
 - Text / Icon: `#000000` (Bold)
 - Border: 1dp solid `#000000`
 - Corner radius: `10dp`
-- Padding: `16dp` horizontal, `12dp` vertical
+- Role: Dedicated strictly to high-intent download triggers (`DOWNLOAD 1080P`, `START DOWNLOAD`).
 
 ### Secondary / Outlined Button
-- Background: `#FFFFFF`
+- Background: `#FFFFFF` (Canvas surface)
 - Text / Icon: `#000000` (Medium)
 - Border: 1dp solid `#000000`
 - Corner radius: `10dp`
+- Role: Secondary controls (Pause, Cancel, Filter, Update).
+
+### Destructive Button
+- Background: `#FCE8E6` (Red subtle tint)
+- Text / Icon: `#D83B01` (Bold)
+- Border: 1dp solid `#D83B01`
+- Corner radius: `10dp`
+- Role: Delete video, clear logs, purge cache.
 
 ### Input Field (URL Bar)
 - Background: `#FFFFFF`

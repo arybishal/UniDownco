@@ -6,6 +6,7 @@ import com.unidownco.core.common.Platform
 import com.unidownco.core.common.Resource
 import com.unidownco.core.database.DownloadDao
 import com.unidownco.core.database.DownloadEntity
+import com.unidownco.core.logging.UniLog
 import com.unidownco.core.network.DownloadForegroundService
 import com.unidownco.core.storage.StorageManager
 import com.unidownco.data.extractor.UniversalExtractorRegistry
@@ -104,6 +105,7 @@ class DownloadRepository(
 
         val job = scope.launch {
             try {
+                UniLog.i("DownloadRepository", "Starting download: id=$downloadId, title='$title', format=${format.resolution}")
                 downloadDao.updateStatus(downloadId, DownloadStatus.DOWNLOADING.name)
                 DownloadForegroundService.start(context, downloadId, title)
 
@@ -132,6 +134,7 @@ class DownloadRepository(
 
                 if (result.isSuccess) {
                     val finalFile = result.getOrThrow()
+                    UniLog.i("DownloadRepository", "Download finished, running hardware verification: ${finalFile.name}")
                     val verification = verifier.verifyMedia(finalFile)
                     if (verification.isValid) {
                         downloadDao.markCompleted(
@@ -140,18 +143,25 @@ class DownloadRepository(
                             path = finalFile.absolutePath,
                             completedAt = System.currentTimeMillis()
                         )
+                        UniLog.i("DownloadRepository", "Verification PASSED, publishing to ${StorageManager.RELATIVE_MOVIES_PATH}/")
                         // Auto-export to Gallery so video appears in system gallery
-                        storageManager.exportToGallery(finalFile, title)
+                        val galleryUri = storageManager.exportToGallery(finalFile, title)
+                        UniLog.i("DownloadRepository", "Exported to Gallery: $galleryUri")
                     } else {
-                        downloadDao.markFailed(downloadId, "Media verification error: ${verification.errorDetails}")
+                        val errMsg = "Media verification error: ${verification.errorDetails}"
+                        UniLog.e("DownloadRepository", errMsg)
+                        downloadDao.markFailed(downloadId, errMsg)
                     }
                 } else {
                     val err = result.exceptionOrNull()?.message ?: "Unknown download error"
+                    UniLog.e("DownloadRepository", "Download failed for id=$downloadId: $err")
                     downloadDao.markFailed(downloadId, err)
                 }
             } catch (ce: CancellationException) {
+                UniLog.w("DownloadRepository", "Download cancelled for id=$downloadId")
                 downloadDao.updateStatus(downloadId, DownloadStatus.CANCELLED.name)
             } catch (e: Exception) {
+                UniLog.e("DownloadRepository", "Download error for id=$downloadId", e)
                 downloadDao.markFailed(downloadId, e.message ?: "Download failed")
             } finally {
                 activeJobs.remove(downloadId)

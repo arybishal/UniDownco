@@ -165,7 +165,15 @@ class YtDlpExtractorProvider(
             )
         }
 
-        val sorted = videoOptions.sortedByDescending { it.height }
+        // Sort: highest resolution first, prefer MP4 container, prefer higher estimated size / bitrate
+        val sorted = videoOptions
+            .sortedWith(
+                compareByDescending<FormatOption> { it.height }
+                    .thenByDescending { if (it.container == "mp4") 1 else 0 }
+                    .thenByDescending { it.estimatedSizeBytes }
+            )
+            // Deduplicate by resolution and container to provide a clean, distinct list of choices
+            .distinctBy { "${it.height}_${it.container}_${it.fps}" }
             .mapIndexed { idx, opt -> opt.copy(isBestQuality = idx == 0) }
 
         return VideoExtractionInfo(

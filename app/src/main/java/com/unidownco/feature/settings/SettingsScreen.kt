@@ -1,5 +1,8 @@
 package com.unidownco.feature.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,11 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -27,13 +31,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.unidownco.core.common.Formatters
 import com.unidownco.core.design.components.UniCard
 import com.unidownco.core.design.components.UniOutlinedButton
+import com.unidownco.core.design.components.UniPrimaryButton
 import com.unidownco.core.design.components.UniTechBadge
 import com.unidownco.core.design.components.UniTopAppBar
 import com.unidownco.core.design.theme.AppTypography
@@ -41,6 +51,14 @@ import com.unidownco.core.design.theme.UniColors
 import com.unidownco.core.design.theme.UniDownTheme
 import com.unidownco.core.design.theme.UniMonoTypography
 import com.unidownco.core.design.theme.UniSpacing
+import com.unidownco.core.logging.UniLog
+import com.unidownco.core.storage.StorageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
@@ -48,7 +66,42 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val allLogs by UniLog.logsFlow.collectAsState()
     val colors = UniDownTheme.colors
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var showLogViewer by remember { mutableStateOf(false) }
+
+    // Quick SAF exporter from settings
+    val quickExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val exportText = UniLog.exportToString()
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(exportText.toByteArray(Charsets.UTF_8))
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Logs successfully exported!", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    if (showLogViewer) {
+        LogViewerScreen(
+            onNavigateBack = { showLogViewer = false }
+        )
+        return
+    }
 
     Column(
         modifier = modifier
@@ -57,7 +110,7 @@ fun SettingsScreen(
     ) {
         UniTopAppBar(
             title = "Settings",
-            subtitle = "Downloader preferences, hardware profiles & storage"
+            subtitle = "Downloader preferences, storage destination & diagnostics"
         )
 
         LazyColumn(
@@ -67,6 +120,109 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(UniSpacing.md)
         ) {
             item { Spacer(modifier = Modifier.height(UniSpacing.xs)) }
+
+            // Storage Destination Card
+            item {
+                UniCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "DOWNLOAD DESTINATION",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Text(
+                            text = "Standard Gallery Folder:",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${StorageManager.RELATIVE_MOVIES_PATH}/",
+                            style = UniMonoTypography.TechnicalMedium,
+                            color = colors.primaryText
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "All completed video downloads are verified and automatically published into this consistent folder for system Gallery and file manager access.",
+                            style = AppTypography.bodySmall,
+                            color = colors.secondaryText
+                        )
+                    }
+                }
+            }
+
+            // Diagnostics & Log Management Card
+            item {
+                UniCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Article,
+                                contentDescription = null,
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "DIAGNOSTICS & SYSTEM LOGS",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            UniTechBadge(
+                                label = "${allLogs.size} records",
+                                isHighlighted = allLogs.any { it.level.name == "ERROR" }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Text(
+                            text = "Inspect background download events, network requests, platform extractions, and error traces. Redacts credentials and API keys automatically.",
+                            style = AppTypography.bodySmall,
+                            color = colors.secondaryText
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            UniPrimaryButton(
+                                onClick = { showLogViewer = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("VIEW LOGS", style = AppTypography.labelSmall)
+                            }
+
+                            UniOutlinedButton(
+                                onClick = {
+                                    val timestamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
+                                    quickExportLauncher.launch("UniDownco_Logs_$timestamp.txt")
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("EXPORT (.TXT)", style = AppTypography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
 
             // Automation & Pipeline Preferences
             item {
@@ -113,90 +269,6 @@ fun SettingsScreen(
                             checked = uiState.wifiOnlyDownload,
                             onCheckedChange = viewModel::onToggleWifiOnly
                         )
-                    }
-                }
-            }
-
-            // Hardware Optimization Profile
-            item {
-                UniCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    backgroundColor = colors.surfaceSubtle
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Memory,
-                                contentDescription = null,
-                                tint = UniColors.AccentYellow,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "PRIMARY HARDWARE TARGET",
-                                style = AppTypography.labelLarge,
-                                color = colors.primaryText
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Target Device: OnePlus Ace 5 / OnePlus 13R\n" +
-                                    "Chipset: Qualcomm Snapdragon 8 Gen 3 (SM8650-AB)\n" +
-                                    "GPU: Adreno 750 (Vulkan 1.3 / OpenCL 3.0 / OpenGL ES 3.2)\n" +
-                                    "Hardware HEVC: 10-bit Main10 c2.qti.hevc.encoder\n" +
-                                    "Target Android: Android 15 (API 35+)",
-                            style = UniMonoTypography.TechnicalSmall,
-                            color = colors.secondaryText
-                        )
-                    }
-                }
-            }
-
-            // Storage & Cache Management
-            item {
-                UniCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "STORAGE & CACHE",
-                            style = AppTypography.labelLarge,
-                            color = colors.primaryText
-                        )
-
-                        Spacer(modifier = Modifier.height(UniSpacing.sm))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Temporary Cache",
-                                    style = AppTypography.bodyMedium,
-                                    color = colors.primaryText
-                                )
-                                Text(
-                                    text = Formatters.formatBytes(uiState.cacheSizeBytes),
-                                    style = UniMonoTypography.TechnicalSmall,
-                                    color = colors.tertiaryText
-                                )
-                            }
-
-                            UniOutlinedButton(
-                                onClick = viewModel::clearCache,
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CleaningServices,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("CLEAR", style = AppTypography.labelSmall)
-                            }
-                        }
                     }
                 }
             }
@@ -260,6 +332,93 @@ fun SettingsScreen(
                 }
             }
 
+            // Storage & Cache Management
+            item {
+                UniCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CleaningServices,
+                                contentDescription = null,
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "STORAGE & CACHE",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Temporary Cache",
+                                    style = AppTypography.bodyMedium,
+                                    color = colors.primaryText
+                                )
+                                Text(
+                                    text = Formatters.formatBytes(uiState.cacheSizeBytes),
+                                    style = UniMonoTypography.TechnicalSmall,
+                                    color = colors.tertiaryText
+                                )
+                            }
+
+                            UniOutlinedButton(
+                                onClick = viewModel::clearCache,
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text("CLEAR CACHE", style = AppTypography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Hardware Optimization Profile
+            item {
+                UniCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = colors.surfaceSubtle
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Memory,
+                                contentDescription = null,
+                                tint = UniColors.AccentYellow,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "PRIMARY HARDWARE TARGET",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Target Device: OnePlus Ace 5 / OnePlus 13R\n" +
+                                    "Chipset: Qualcomm Snapdragon 8 Gen 3 (SM8650-AB)\n" +
+                                    "GPU: Adreno 750 (Vulkan 1.3 / OpenCL 3.0 / OpenGL ES 3.2)\n" +
+                                    "Hardware HEVC: 10-bit Main10 c2.qti.hevc.encoder\n" +
+                                    "Target Android: Android 15 (API 35+)",
+                            style = UniMonoTypography.TechnicalSmall,
+                            color = colors.secondaryText
+                        )
+                    }
+                }
+            }
+
             // About UniDownco
             item {
                 UniCard(modifier = Modifier.fillMaxWidth()) {
@@ -282,11 +441,11 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "UniDownco v1.0.0 (Build 1)\n" +
+                            text = "UniDownco v1.0.3-step1.3.2\n" +
                                     "Architecture: MVVM Clean Architecture\n" +
-                                    "Target SDK: Android 15 (API 35)\n" +
-                                    "Downloader Engine: Universal Extractor Engine\n" +
-                                    "Database: Room 2.6.1\n" +
+                                    "Target SDK: Android 15 (API 35) • Tested on API 36\n" +
+                                    "Downloader Engine: Universal Extractor + yt-dlp 0.18.1\n" +
+                                    "Storage Path: Movies/UniDownco/\n" +
                                     "Design System: White Canvas, Black Structure, Yellow Accent",
                             style = UniMonoTypography.TechnicalSmall,
                             color = colors.secondaryText

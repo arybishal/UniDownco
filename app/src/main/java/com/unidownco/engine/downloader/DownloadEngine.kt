@@ -1,6 +1,7 @@
 package com.unidownco.engine.downloader
 
 import android.util.Log
+import com.unidownco.core.logging.UniLog
 import com.unidownco.core.network.NetworkClient
 import com.unidownco.domain.models.FormatOption
 import com.yausername.youtubedl_android.YoutubeDL
@@ -134,6 +135,7 @@ class DownloadEngine {
         request.addOption("--no-mtime")
         request.addOption("--socket-timeout", "20")
 
+        UniLog.i(TAG, "Executing yt-dlp download: format=${format.formatId} (${format.resolution}), processId=$processId")
         return try {
             val response = YoutubeDL.getInstance().execute(request, processId) { progress, eta, line ->
                 val percent = progress.toInt().coerceIn(0, 100)
@@ -162,17 +164,21 @@ class DownloadEngine {
                 if (destinationFile.exists()) destinationFile.delete()
                 val renamed = downloadedFile.renameTo(destinationFile)
                 if (renamed) {
+                    UniLog.i(TAG, "yt-dlp download finished and renamed: ${destinationFile.name} (${destinationFile.length()} bytes)")
                     Result.success(destinationFile)
                 } else {
                     downloadedFile.copyTo(destinationFile, overwrite = true)
                     downloadedFile.delete()
+                    UniLog.i(TAG, "yt-dlp download finished and copied: ${destinationFile.name} (${destinationFile.length()} bytes)")
                     Result.success(destinationFile)
                 }
             } else {
-                Result.failure(Exception("yt-dlp finished but output file not found in ${targetDir.absolutePath}"))
+                val err = "yt-dlp finished but output file not found in ${targetDir.absolutePath}"
+                UniLog.e(TAG, err)
+                Result.failure(Exception(err))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "yt-dlp download execution failed: ${e.message}", e)
+            UniLog.e(TAG, "yt-dlp download execution failed: ${e.message}", e)
             Result.failure(e)
         }
     }

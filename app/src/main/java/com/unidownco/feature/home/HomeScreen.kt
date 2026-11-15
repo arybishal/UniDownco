@@ -6,20 +6,25 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.unidownco.core.common.Formatters
 import com.unidownco.core.common.Platform
+import com.unidownco.core.design.components.UniAccentButton
 import com.unidownco.core.design.components.UniCard
 import com.unidownco.core.design.components.UniPrimaryButton
 import com.unidownco.core.design.components.UniStatusBadge
@@ -50,6 +56,7 @@ import com.unidownco.core.design.theme.UniDownTheme
 import com.unidownco.core.design.theme.UniMonoTypography
 import com.unidownco.core.design.theme.UniShapes
 import com.unidownco.core.design.theme.UniSpacing
+import com.unidownco.core.storage.StorageManager
 import com.unidownco.domain.models.DownloadItem
 import com.unidownco.domain.models.FormatOption
 
@@ -106,6 +113,7 @@ fun HomeScreen(
                             style = AppTypography.labelLarge,
                             color = colors.primaryText
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Supports YouTube, TikTok, Instagram Reels, Reddit, X (Twitter), Facebook & direct streams.",
                             style = AppTypography.bodySmall,
@@ -119,7 +127,7 @@ fun HomeScreen(
                             onValueChange = viewModel::onUrlChanged,
                             onPasteClick = viewModel::onPasteFromClipboard,
                             onClearClick = viewModel::onClearUrl,
-                            onSubmit = viewModel::onStartAnalysis
+                            onSubmit = { viewModel.onStartAnalysis() }
                         )
 
                         if (uiState.detectedPlatform != Platform.UNSUPPORTED) {
@@ -164,14 +172,14 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(UniSpacing.md))
 
                         UniPrimaryButton(
-                            onClick = viewModel::onStartAnalysis,
+                            onClick = { viewModel.onStartAnalysis() },
                             enabled = uiState.isUrlValid && !uiState.isExtracting,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (uiState.isExtracting) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
-                                    color = Color.Black,
+                                    color = if (colors.isDark) Color.Black else Color.White,
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -180,7 +188,7 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.Default.Download,
                                     contentDescription = null,
-                                    tint = Color.Black,
+                                    tint = if (colors.isDark) Color.Black else Color.White,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -247,7 +255,7 @@ fun HomeScreen(
         }
     }
 
-    // Format Selection Modal Bottom Sheet
+    // Format Selection Modal Bottom Sheet with Sticky Download Action
     if (uiState.showFormatSheet && uiState.extractedInfo != null) {
         val info = uiState.extractedInfo!!
         ModalBottomSheet(
@@ -256,41 +264,65 @@ fun HomeScreen(
             containerColor = colors.surface,
             shape = UniShapes.BottomSheetShape
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = UniSpacing.screenHorizontalPadding)
-                    .padding(bottom = 32.dp)
+                    .fillMaxHeight(0.85f)
             ) {
-                Text(
-                    text = "SELECT DOWNLOAD STREAM",
-                    style = AppTypography.titleLarge,
-                    color = colors.primaryText
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = info.title,
-                    style = AppTypography.bodyMedium,
-                    color = colors.secondaryText,
-                    maxLines = 2
-                )
-                if (info.author.isNotBlank()) {
-                    Text(
-                        text = "By ${info.author} • ${info.platform.displayName}",
-                        style = AppTypography.bodySmall,
-                        color = colors.tertiaryText
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(UniSpacing.md))
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
+                // Scrollable Format Options List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = UniSpacing.screenHorizontalPadding),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    info.formats.forEach { format ->
+                    item {
+                        Text(
+                            text = "SELECT DOWNLOAD STREAM",
+                            style = AppTypography.titleLarge,
+                            color = colors.primaryText
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = info.title,
+                            style = AppTypography.bodyMedium,
+                            color = colors.secondaryText,
+                            maxLines = 2
+                        )
+                        if (info.author.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "By ${info.author} • ${info.platform.displayName}",
+                                style = AppTypography.bodySmall,
+                                color = colors.tertiaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.xs))
+
+                        // Destination indicator
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = colors.secondaryText,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Save to: ${StorageManager.RELATIVE_MOVIES_PATH}/",
+                                style = UniMonoTypography.TechnicalSmall,
+                                color = colors.secondaryText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+                    }
+
+                    items(info.formats, key = { it.formatId }) { format ->
                         val isSelected = uiState.selectedFormat?.formatId == format.formatId
-                        FormatOptionRow(
+                        FormatOptionCard(
                             format = format,
                             isSelected = isSelected,
                             onSelect = { viewModel.onSelectFormat(format) }
@@ -298,13 +330,44 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(UniSpacing.lg))
-
-                UniPrimaryButton(
-                    onClick = viewModel::onConfirmDownload,
-                    modifier = Modifier.fillMaxWidth()
+                // Sticky Bottom Bar with Prominent DOWNLOAD SELECTED FORMAT action
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(colors.surface)
+                        .border(width = 1.dp, color = colors.subtleBorder)
+                        .padding(horizontal = UniSpacing.screenHorizontalPadding, vertical = 12.dp)
+                        .navigationBarsPadding()
                 ) {
-                    Text("START DOWNLOAD", style = AppTypography.labelLarge)
+                    val selected = uiState.selectedFormat
+                    val buttonText = if (selected != null) {
+                        "DOWNLOAD ${selected.resolution.uppercase()}"
+                    } else {
+                        "DOWNLOAD SELECTED FORMAT"
+                    }
+
+                    UniAccentButton(
+                        onClick = {
+                            viewModel.onConfirmDownload()
+                            onNavigateToQueue()
+                        },
+                        enabled = selected != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = buttonText,
+                            style = AppTypography.labelLarge,
+                            color = Color.Black
+                        )
+                    }
                 }
             }
         }
@@ -349,19 +412,23 @@ fun StorageMetricsCard(
                     style = UniMonoTypography.TechnicalLarge,
                     color = colors.primaryText
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Destination: ${StorageManager.RELATIVE_MOVIES_PATH}/",
+                    style = UniMonoTypography.TechnicalSmall,
+                    color = colors.tertiaryText
+                )
             }
 
             Column(
                 modifier = Modifier.clickable { onQueueClick() },
                 horizontalAlignment = Alignment.End
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "ACTIVE QUEUE",
-                        style = AppTypography.labelSmall,
-                        color = colors.secondaryText
-                    )
-                }
+                Text(
+                    text = "ACTIVE QUEUE",
+                    style = AppTypography.labelSmall,
+                    color = colors.secondaryText
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     UniTechBadge(
@@ -433,7 +500,7 @@ fun RecentTaskCard(item: DownloadItem) {
 }
 
 @Composable
-fun FormatOptionRow(
+fun FormatOptionCard(
     format: FormatOption,
     isSelected: Boolean,
     onSelect: () -> Unit
@@ -441,14 +508,15 @@ fun FormatOptionRow(
     val colors = UniDownTheme.colors
     val bg = if (isSelected) colors.surfaceSubtle else colors.surface
     val border = if (isSelected) Color.Black else colors.subtleBorder
+    val borderWidth = if (isSelected) 2.dp else 1.dp
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(bg, UniShapes.CardShape)
-            .border(1.dp, border, UniShapes.CardShape)
+            .border(borderWidth, border, UniShapes.CardShape)
             .clickable { onSelect() }
-            .padding(12.dp),
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(
@@ -459,7 +527,9 @@ fun FormatOptionRow(
                 unselectedColor = colors.tertiaryText
             )
         )
-        Spacer(modifier = Modifier.width(8.dp))
+
+        Spacer(modifier = Modifier.width(10.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -472,13 +542,45 @@ fun FormatOptionRow(
                     UniTechBadge(label = "BEST QUALITY", isHighlighted = true)
                 }
             }
-            Spacer(modifier = Modifier.height(2.dp))
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // Specs line
+            val codecText = format.videoCodec.uppercase()
+            val containerText = format.container.uppercase()
+            val fpsText = "${format.fps} FPS"
+            val sizeText = if (format.estimatedSizeBytes > 0) " • ~${Formatters.formatBytes(format.estimatedSizeBytes)}" else ""
+
             Text(
-                text = "${format.container.uppercase()} • ${format.videoCodec.uppercase()} • ${format.fps} FPS" +
-                        if (format.estimatedSizeBytes > 0) " • ~${Formatters.formatBytes(format.estimatedSizeBytes)}" else "",
+                text = "$containerText • $codecText • $fpsText$sizeText",
                 style = UniMonoTypography.TechnicalSmall,
                 color = colors.secondaryText
             )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Audio track status
+            val audioStatus = if (!format.audioUrl.isNullOrBlank()) {
+                "Adaptive audio paired & merged"
+            } else if (!format.audioCodec.isNullOrBlank() && format.audioCodec != "none") {
+                "Direct audio stream included"
+            } else {
+                "Audio track ready"
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Audiotrack,
+                    contentDescription = null,
+                    tint = colors.tertiaryText,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = audioStatus,
+                    style = AppTypography.labelSmall.copy(color = colors.tertiaryText)
+                )
+            }
         }
     }
 }

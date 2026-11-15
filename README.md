@@ -27,7 +27,12 @@ This release implements **Step 1: Project Foundation + Universal Video Downloade
 - **Hardware-Level Media Verification**: Pre-export stream validation using Android's `MediaMetadataRetriever` to guarantee media integrity and prevent corrupt files from entering the gallery.
 - **Room Persistence**: Non-destructive migrated database caching download history, active queues, and technical metadata.
 - **Background Execution**: Compliant Android 14/15/16 foreground service with progress notification, speed calculation, ETA, and cancellation.
-- **MediaStore & Scoped Storage**: Automatic export of completed videos into `Movies/UniversalHDR/` with immediate system gallery visibility.
+- **MediaStore & Scoped Storage**: Automatic export of completed videos into `Movies/UniDownco/` with immediate system gallery visibility.
+- **UI/UX & Diagnostics Overhaul**:
+  - Resolution selector with scrollable format cards and persistent sticky **"DOWNLOAD {RESOLUTION}"** primary action.
+  - Rebuilt four-tab bottom navigation with fixed layout geometry, zero shifting, and Android 15/16 gesture insets.
+  - Dedicated in-app **Log Viewer Screen** with real-time keyword search, severity filtering, credential redaction, and SAF export to `.txt`.
+  - Consistent button hierarchy (`UniPrimaryButton`, `UniAccentButton`, `UniOutlinedButton`, `UniDestructiveButton`).
 - **Encoding Engine Interface Preparation**: Clean architectural boundaries established for Step 2 (`VideoAnalyzer`, `VideoEncoder`) and Step 3 (`HDRProcessor`, `FrameInterpolator`, `MediaVerifier`).
 
 ---

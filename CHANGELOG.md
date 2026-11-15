@@ -2,6 +2,44 @@
 
 All notable changes to the UniDownco project will be documented in this file.
 
+## [1.0.4-step1.3.2] - 2026-11-15
+### Added
+- **Resolution Selection Bottom Sheet & Sticky Download Action**:
+  - Completely redesigned format selection modal sheet with a scrollable `LazyColumn` for formats and a persistent, sticky bottom bar.
+  - Added primary signature action button **"DOWNLOAD {RESOLUTION}"** (e.g., `DOWNLOAD 1080P`, `DOWNLOAD 720P`) using `UniAccentButton`.
+  - Displays codec, container (MP4/WebM), frame rate, estimated file size, audio merge status, and highlighted selection border.
+  - Automatically enqueues the exact selected format ID and immediately transitions the user to the active Queue tab.
+- **Button System Overhaul**:
+  - Implemented consistent button hierarchy in `UniButtons.kt`:
+    - `UniPrimaryButton`: Black background (`#000000`), white text, 1dp border, 10dp corners.
+    - `UniAccentButton`: Signature Yellow (`#FFD429`), black text, 1dp black border, 10dp corners.
+    - `UniOutlinedButton`: White/surface background, black text, 1dp subtle border.
+    - `UniDestructiveButton`: Red tint container (`#FCE8E6`), red text (`#D83B01`), red border.
+    - `UniCompactButton`: 34dp height for in-field quick actions (Paste, Clear).
+- **Bottom Navigation Bar Redesign**:
+  - Rebuilt `UniBottomNavBar` with fixed-width weighted tab slots, persistent readable labels, and zero layout shifting when switching destinations.
+  - Replaced ad-hoc pill backgrounds with an elegant, static yellow indicator line on the active tab.
+  - Added Android 15/16 system navigation bar insets (`navigationBarsPadding()`) preventing overlap with system gesture navigation.
+  - Integrated static active download count badge on Queue icon.
+- **Structured Bounded Logging & Log Viewer Screen**:
+  - Implemented `UniLog` with 500-entry in-memory ring buffer, 2MB rotating disk log file, and automatic redaction of sensitive credentials, tokens, and query parameters.
+  - Created dedicated `LogViewerScreen` accessible directly from Settings:
+    - Real-time search by keyword, tag, or message.
+    - Severity filtering chips: `ALL`, `DEBUG`, `INFO`, `WARN`, `ERROR` with live counts.
+    - Click to expand/collapse long error messages.
+    - "COPY ENTRY" and "COPY VISIBLE LOGS" to system clipboard.
+    - "EXPORT LOGS (.TXT)" via Android Storage Access Framework (`CreateDocument("text/plain")`).
+    - "CLEAR LOGS" with confirmation dialog.
+- **Unified Storage Destination (`Movies/UniDownco/`)**:
+  - Unified all downloaded video publishing under a single consistent folder: `Movies/UniDownco/`.
+  - Implemented safe duplicate collision handling and MediaStore Scoped Storage insertion.
+  - Added legacy storage permission (`WRITE_EXTERNAL_STORAGE` with `maxSdkVersion="28"`) for Android 9 and below.
+  - Displayed destination folder cleanly in Settings and Home storage cards.
+- **Automated Tests**:
+  - Added `UniLogTest.kt` verifying token redaction, level filtering, search, and export formatting.
+  - Added `DownloadFlowAndStorageTest.kt` verifying destination paths, filename sanitization, button text, and bottom nav tabs.
+  - 100% test pass rate across all 30 unit tests.
+
 ## [1.0.3-step1.3] - 2026-11-15
 ### Added
 - **Operational yt-dlp & FFmpeg Runtime Integration**:
