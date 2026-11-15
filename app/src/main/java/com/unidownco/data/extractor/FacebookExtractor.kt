@@ -99,14 +99,7 @@ class FacebookExtractor : VideoExtractor {
             }
 
             if (formats.isEmpty()) {
-                formats.add(
-                    FormatOption(
-                        formatId = "fb_default",
-                        resolution = "Original",
-                        videoUrl = url,
-                        isBestQuality = true
-                    )
-                )
+                return@withContext Resource.Error("Could not extract direct stream URL from Facebook. Video may be private or platform changed layout.")
             }
 
             Resource.Success(

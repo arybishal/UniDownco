@@ -92,22 +92,9 @@ class TikTokExtractor : VideoExtractor {
                         isBestQuality = true
                     )
                 )
-            } else {
-                // Fallback direct format using URL
-                formats.add(
-                    FormatOption(
-                        formatId = "tiktok_original",
-                        resolution = "Original",
-                        width = width,
-                        height = height,
-                        fps = 30,
-                        videoCodec = "h264",
-                        audioCodec = "aac",
-                        container = "mp4",
-                        videoUrl = url,
-                        isBestQuality = true
-                    )
-                )
+            }
+            if (formats.isEmpty()) {
+                return@withContext Resource.Error("Could not extract direct stream URL from TikTok. Platform requires anti-bot signature token or yt-dlp bridge.")
             }
 
             Resource.Success(

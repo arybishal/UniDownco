@@ -84,21 +84,9 @@ class InstagramExtractor : VideoExtractor {
                         isBestQuality = true
                     )
                 )
-            } else {
-                formats.add(
-                    FormatOption(
-                        formatId = "ig_default",
-                        resolution = "Original",
-                        width = 1080,
-                        height = 1920,
-                        fps = 30,
-                        videoCodec = "h264",
-                        audioCodec = "aac",
-                        container = "mp4",
-                        videoUrl = url,
-                        isBestQuality = true
-                    )
-                )
+            }
+            if (formats.isEmpty()) {
+                return@withContext Resource.Error("Instagram video stream requires session authentication or yt-dlp bridge. Direct access restricted.")
             }
 
             Resource.Success(

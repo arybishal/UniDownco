@@ -25,6 +25,8 @@ data class DownloadEntity(
     val author: String = "",
     val thumbnailUrl: String? = null,
     val originalFilename: String,
+    val streamUrl: String? = null,
+    val audioStreamUrl: String? = null,
     val downloadPath: String? = null,
     val outputPath: String? = null,
     val resolution: String = "1080p",

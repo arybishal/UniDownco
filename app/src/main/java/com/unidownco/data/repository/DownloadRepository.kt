@@ -15,6 +15,8 @@ import com.unidownco.domain.models.EncodingStatus
 import com.unidownco.domain.models.FormatOption
 import com.unidownco.domain.models.VideoExtractionInfo
 import com.unidownco.engine.downloader.DownloadEngine
+import com.unidownco.engine.verifier.AndroidMediaVerifier
+import com.unidownco.engine.verifier.MediaVerifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +33,8 @@ class DownloadRepository(
     private val downloadDao: DownloadDao,
     private val storageManager: StorageManager,
     private val extractorRegistry: UniversalExtractorRegistry = UniversalExtractorRegistry(),
-    private val downloadEngine: DownloadEngine = DownloadEngine()
+    private val downloadEngine: DownloadEngine = DownloadEngine(),
+    private val verifier: MediaVerifier = AndroidMediaVerifier()
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeJobs = ConcurrentHashMap<Long, Job>()
@@ -70,6 +73,8 @@ class DownloadRepository(
             author = info.author,
             thumbnailUrl = info.thumbnailUrl,
             originalFilename = filename,
+            streamUrl = selectedFormat.videoUrl,
+            audioStreamUrl = selectedFormat.audioUrl,
             downloadPath = targetFile.absolutePath,
             resolution = selectedFormat.resolution,
             fps = selectedFormat.fps,
@@ -115,14 +120,19 @@ class DownloadRepository(
 
                 if (result.isSuccess) {
                     val finalFile = result.getOrThrow()
-                    downloadDao.markCompleted(
-                        id = downloadId,
-                        status = DownloadStatus.COMPLETED.name,
-                        path = finalFile.absolutePath,
-                        completedAt = System.currentTimeMillis()
-                    )
-                    // Auto-export to Gallery so video appears in system gallery
-                    storageManager.exportToGallery(finalFile, title)
+                    val verification = verifier.verifyMedia(finalFile)
+                    if (verification.isValid) {
+                        downloadDao.markCompleted(
+                            id = downloadId,
+                            status = DownloadStatus.COMPLETED.name,
+                            path = finalFile.absolutePath,
+                            completedAt = System.currentTimeMillis()
+                        )
+                        // Auto-export to Gallery so video appears in system gallery
+                        storageManager.exportToGallery(finalFile, title)
+                    } else {
+                        downloadDao.markFailed(downloadId, "Media verification error: ${verification.errorDetails}")
+                    }
                 } else {
                     val err = result.exceptionOrNull()?.message ?: "Unknown download error"
                     downloadDao.markFailed(downloadId, err)
@@ -156,12 +166,14 @@ class DownloadRepository(
         val targetPath = entity.downloadPath ?: return
         val targetFile = File(targetPath)
 
+        val streamUrl = entity.streamUrl ?: entity.url
         val format = FormatOption(
             formatId = "resume",
             resolution = entity.resolution,
             fps = entity.fps,
             videoCodec = entity.codec,
-            videoUrl = entity.url,
+            videoUrl = streamUrl,
+            audioUrl = entity.audioStreamUrl,
             estimatedSizeBytes = entity.fileSizeBytes
         )
 
@@ -188,9 +200,10 @@ class DownloadRepository(
 
         if (entity != null) {
             storageManager.deleteFile(entity.downloadPath)
-            // Also delete .part file if exists
             if (entity.downloadPath != null) {
                 storageManager.deleteFile("${entity.downloadPath}.part")
+                storageManager.deleteFile("${entity.downloadPath}.video.part")
+                storageManager.deleteFile("${entity.downloadPath}.audio.part")
             }
             downloadDao.deleteById(id)
         }

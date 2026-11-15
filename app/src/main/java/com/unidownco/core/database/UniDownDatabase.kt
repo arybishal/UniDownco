@@ -10,7 +10,7 @@ import androidx.room.RoomDatabase
         DownloadEntity::class,
         VideoMetadataEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class UniDownDatabase : RoomDatabase() {

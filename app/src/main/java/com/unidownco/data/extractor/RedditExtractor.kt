@@ -91,20 +91,7 @@ class RedditExtractor : VideoExtractor {
             }
 
             if (formats.isEmpty()) {
-                formats.add(
-                    FormatOption(
-                        formatId = "reddit_default",
-                        resolution = "Original",
-                        width = 1920,
-                        height = 1080,
-                        fps = 30,
-                        videoCodec = "h264",
-                        audioCodec = "aac",
-                        container = "mp4",
-                        videoUrl = url,
-                        isBestQuality = true
-                    )
-                )
+                return@withContext Resource.Error("Could not extract direct video streams from Reddit post. Post may not contain a native video, or access is restricted.")
             }
 
             Resource.Success(

@@ -28,7 +28,7 @@ class GenericExtractor : VideoExtractor {
             if (title.isBlank()) title = "Web Video"
 
             var thumbnail: String? = null
-            var videoStreamUrl: String = url
+            var videoStreamUrl: String = if (isDirectVideo) url else ""
 
             if (!isDirectVideo) {
                 // Fetch web page and parse HTML5 video or OpenGraph video tag
@@ -36,33 +36,40 @@ class GenericExtractor : VideoExtractor {
                 try {
                     NetworkClient.execute(req).use { response ->
                         if (response.isSuccessful) {
-                            val html = response.body?.string() ?: ""
+                            val contentType = response.header("Content-Type", "") ?: ""
+                            if (contentType.startsWith("video/")) {
+                                videoStreamUrl = url
+                            } else {
+                                val html = response.body?.string() ?: ""
 
-                            // OpenGraph video
-                            val ogVideoPattern = Pattern.compile("<meta property=\"og:video\" content=\"([^\"]+)\"")
-                            val ogMatcher = ogVideoPattern.matcher(html)
-                            if (ogMatcher.find()) {
-                                videoStreamUrl = ogMatcher.group(1)?.replace("&amp;", "&") ?: url
-                            }
+                                // OpenGraph video
+                                val ogVideoPattern = Pattern.compile("<meta property=\"og:video\" content=\"([^\"]+)\"")
+                                val ogMatcher = ogVideoPattern.matcher(html)
+                                if (ogMatcher.find()) {
+                                    videoStreamUrl = ogMatcher.group(1)?.replace("&amp;", "&") ?: ""
+                                }
 
-                            // OpenGraph title
-                            val ogTitlePattern = Pattern.compile("<meta property=\"og:title\" content=\"([^\"]+)\"")
-                            val titleMatcher = ogTitlePattern.matcher(html)
-                            if (titleMatcher.find()) {
-                                val foundTitle = titleMatcher.group(1)?.replace("&amp;", "&")
-                                if (!foundTitle.isNullOrBlank()) title = foundTitle
-                            }
+                                // OpenGraph title
+                                val ogTitlePattern = Pattern.compile("<meta property=\"og:title\" content=\"([^\"]+)\"")
+                                val titleMatcher = ogTitlePattern.matcher(html)
+                                if (titleMatcher.find()) {
+                                    val foundTitle = titleMatcher.group(1)?.replace("&amp;", "&")
+                                    if (!foundTitle.isNullOrBlank()) title = foundTitle
+                                }
 
-                            // OpenGraph image
-                            val ogImagePattern = Pattern.compile("<meta property=\"og:image\" content=\"([^\"]+)\"")
-                            val imageMatcher = ogImagePattern.matcher(html)
-                            if (imageMatcher.find()) {
-                                thumbnail = imageMatcher.group(1)?.replace("&amp;", "&")
+                                // OpenGraph image
+                                val ogImagePattern = Pattern.compile("<meta property=\"og:image\" content=\"([^\"]+)\"")
+                                val imageMatcher = ogImagePattern.matcher(html)
+                                if (imageMatcher.find()) {
+                                    thumbnail = imageMatcher.group(1)?.replace("&amp;", "&")
+                                }
                             }
                         }
                     }
-                } catch (_: Exception) {
-                    // Use URL as direct stream
+                } catch (_: Exception) {}
+
+                if (videoStreamUrl.isBlank()) {
+                    return@withContext Resource.Error("URL does not contain a direct video stream or supported media format.")
                 }
             }
 

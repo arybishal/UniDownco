@@ -130,25 +130,45 @@ class YouTubeExtractor : VideoExtractor {
 
                             // Adaptive video formats (1080p, 1440p, 4K)
                             val adaptiveFormats = streamingData.optJSONArray("adaptiveFormats")
-                            if (adaptiveFormats != null && formats.isEmpty()) {
+                            if (adaptiveFormats != null) {
+                                var bestAudioUrl: String? = null
+                                var bestAudioBitrate = 0L
+
+                                for (i in 0 until adaptiveFormats.length()) {
+                                    val f = adaptiveFormats.getJSONObject(i)
+                                    val mime = f.optString("mimeType", "")
+                                    val streamUrl = f.optString("url")
+                                    if (mime.startsWith("audio/") && streamUrl.isNotBlank()) {
+                                        val bitrate = f.optLong("bitrate", 0L)
+                                        if (bitrate > bestAudioBitrate || bestAudioUrl == null) {
+                                            bestAudioBitrate = bitrate
+                                            bestAudioUrl = streamUrl
+                                        }
+                                    }
+                                }
+
                                 for (i in 0 until adaptiveFormats.length()) {
                                     val f = adaptiveFormats.getJSONObject(i)
                                     val mime = f.optString("mimeType", "")
                                     val streamUrl = f.optString("url")
                                     if (mime.startsWith("video/") && streamUrl.isNotBlank()) {
                                         val quality = f.optString("qualityLabel", "${f.optInt("height", 1080)}p")
+                                        val width = f.optInt("width", 1920)
+                                        val height = f.optInt("height", 1080)
                                         formats.add(
                                             FormatOption(
                                                 formatId = f.optString("itag", "adaptive_$i"),
                                                 resolution = quality,
-                                                width = f.optInt("width", 1920),
-                                                height = f.optInt("height", 1080),
+                                                width = width,
+                                                height = height,
                                                 fps = f.optInt("fps", 30),
                                                 videoCodec = if (mime.contains("av01")) "av01" else if (mime.contains("vp9")) "vp9" else "h264",
-                                                audioCodec = "aac",
+                                                audioCodec = if (bestAudioUrl != null) "aac" else null,
                                                 container = "mp4",
                                                 estimatedSizeBytes = f.optLong("contentLength", 0L),
-                                                videoUrl = streamUrl
+                                                videoUrl = streamUrl,
+                                                audioUrl = bestAudioUrl,
+                                                isBestQuality = formats.isEmpty()
                                             )
                                         )
                                     }
@@ -159,22 +179,8 @@ class YouTubeExtractor : VideoExtractor {
                 }
             }
 
-            // Fallback format if streaming formats were unavailable
             if (formats.isEmpty()) {
-                formats.add(
-                    FormatOption(
-                        formatId = "yt_default",
-                        resolution = "1080p",
-                        width = 1920,
-                        height = 1080,
-                        fps = 30,
-                        videoCodec = "h264",
-                        audioCodec = "aac",
-                        container = "mp4",
-                        videoUrl = "https://www.youtube.com/watch?v=$videoId",
-                        isBestQuality = true
-                    )
-                )
+                return@withContext Resource.Error("YouTube streaming formats require signature deciphering or yt-dlp bridge. Direct stream extraction blocked by platform.")
             }
 
             Resource.Success(

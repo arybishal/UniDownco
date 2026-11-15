@@ -96,14 +96,9 @@ class TwitterExtractor : VideoExtractor {
             val sortedFormats = formats.sortedByDescending { it.estimatedSizeBytes }
                 .mapIndexed { idx, item -> item.copy(isBestQuality = idx == 0) }
 
-            val finalFormats = if (sortedFormats.isNotEmpty()) sortedFormats else listOf(
-                FormatOption(
-                    formatId = "x_default",
-                    resolution = "Original",
-                    videoUrl = url,
-                    isBestQuality = true
-                )
-            )
+            if (sortedFormats.isEmpty()) {
+                return@withContext Resource.Error("Could not extract video streams from X / Twitter post. Video may be unavailable or post requires login.")
+            }
 
             Resource.Success(
                 VideoExtractionInfo(
@@ -113,7 +108,7 @@ class TwitterExtractor : VideoExtractor {
                     author = author,
                     durationSeconds = 0L,
                     thumbnailUrl = thumbnail,
-                    formats = finalFormats
+                    formats = sortedFormats
                 )
             )
         } catch (e: Exception) {
