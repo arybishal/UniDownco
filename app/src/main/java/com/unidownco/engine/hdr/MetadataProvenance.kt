@@ -23,6 +23,11 @@ enum class MetadataProvenance {
     MATHEMATICALLY_ESTIMATED,
 
     /**
+     * Configured explicitly by the user via HDR enhancement settings or manual overrides.
+     */
+    USER_CONFIGURED,
+
+    /**
      * Metadata is not available and cannot be reliably measured or mathematically bounded.
      * Standards-compliant representation requires omission or signaling as unknown (0).
      */

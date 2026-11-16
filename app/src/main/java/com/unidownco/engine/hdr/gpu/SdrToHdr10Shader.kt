@@ -32,9 +32,11 @@ in vec2 vTextureCoord;
 out vec4 fragColor;
 
 uniform samplerExternalOES sTexture;
-uniform int uHdrMode;          // 0 = SDR_PASSTHROUGH, 1 = SDR_TO_HDR10, 2 = HDR10_PASSTHROUGH
-uniform float uTargetPeakNits; // e.g. 1000.0 nits
-uniform float uKneeThreshold;  // e.g. 0.70 (70 nits normalized)
+uniform int uHdrMode;                 // 0 = SDR_PASSTHROUGH, 1 = SDR_TO_HDR10, 2 = HDR10_PASSTHROUGH
+uniform float uTargetPeakNits;        // e.g. 1000.0 nits
+uniform float uKneeThreshold;         // e.g. 0.70 (70 nits normalized)
+uniform int uDynamicColorEnabled;     // 0 = disabled, 1 = enabled
+uniform float uDynamicColorIntensity; // 0.0 to 1.0 (default 0.5)
 
 // Rec.709 Linearization (Inverse OETF)
 vec3 sdrToLinear(vec3 c) {
@@ -80,8 +82,34 @@ void main() {
         // Step 2: Gamut expansion (Rec.709 -> Rec.2020)
         vec3 lin2020 = M_709_TO_2020 * lin709;
 
-        // Step 3: ITU-R BT.2408 Inverse Tone Mapping
-        float yIn = dot(lin2020, vec3(0.262700, 0.677998, 0.059302));
+        // Step 3: Dynamic Color Adaptive Vibrance (Hue-preserving, skin-tone protected)
+        vec3 colorReady = lin2020;
+        if (uDynamicColorEnabled == 1 && uDynamicColorIntensity > 0.0) {
+            float yNorm = dot(lin2020, vec3(0.262700, 0.677998, 0.059302));
+            if (yNorm > 0.000001) {
+                float cb = (lin2020.b - yNorm) / 1.8814;
+                float cr = (lin2020.r - yNorm) / 1.4746;
+                float chroma = sqrt(cb * cb + cr * cr);
+                float skinWeight = 0.0;
+                if (chroma > 0.005 && cr > 0.0 && cb < 0.0) {
+                    float ratio = cr / max(-cb, 0.0001);
+                    float ratioDiff = abs(ratio - 1.4);
+                    skinWeight = clamp(1.0 - ratioDiff * 0.8, 0.0, 1.0);
+                }
+
+                float lumaWeight = smoothstep(0.01, 0.10, yNorm) * (1.0 - smoothstep(0.80, 0.98, yNorm));
+                float maxC = max(lin2020.r, max(lin2020.g, lin2020.b));
+                float minC = min(lin2020.r, min(lin2020.g, lin2020.b));
+                float currentSat = (maxC - minC) / max(yNorm, 0.01);
+                float satHeadroom = clamp(1.0 - currentSat * 0.5, 0.2, 1.0);
+
+                float boostFactor = 1.0 + (clamp(uDynamicColorIntensity, 0.0, 1.0) * 0.5) * lumaWeight * satHeadroom * (1.0 - 0.80 * skinWeight);
+                colorReady = max(vec3(0.0), vec3(yNorm) + (lin2020 - vec3(yNorm)) * boostFactor);
+            }
+        }
+
+        // Step 4: ITU-R BT.2408 Inverse Tone Mapping
+        float yIn = dot(colorReady, vec3(0.262700, 0.677998, 0.059302));
         if (yIn > 0.000001) {
             float diffScale = 2.03; // 203 nits / 100 nits
             float peakScale = uTargetPeakNits / 100.0;
@@ -99,9 +127,9 @@ void main() {
 
             float targetNits = yExp * 100.0;
             float gain = targetNits / yIn;
-            vec3 hdrNits = lin2020 * gain;
+            vec3 hdrNits = colorReady * gain;
 
-            // Step 4: SMPTE ST 2084 PQ Non-linear Transfer Encoding
+            // Step 5: SMPTE ST 2084 PQ Non-linear Transfer Encoding
             vec3 pqEncoded = encodePq(hdrNits);
             fragColor = vec4(clamp(pqEncoded, 0.0, 1.0), 1.0);
         } else {

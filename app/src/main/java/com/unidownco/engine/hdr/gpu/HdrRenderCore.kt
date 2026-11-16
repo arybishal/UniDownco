@@ -12,6 +12,7 @@ import android.opengl.GLES20
 import android.opengl.GLES30
 import android.view.Surface
 import com.unidownco.core.logging.UniLog
+import com.unidownco.engine.hdr.HdrEnhancementConfig
 import com.unidownco.engine.hdr.TargetHdrType
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -29,8 +30,32 @@ class HdrRenderCore(
     private val targetHdrType: TargetHdrType = TargetHdrType.SDR_TO_HDR10,
     private val targetPeakNits: Double = 1000.0,
     private val kneeThreshold: Double = 0.70,
+    private val dynamicColorEnabled: Boolean = false,
+    private val dynamicColorIntensity: Float = 0.5f,
     private val prefer10Bit: Boolean = true
 ) {
+    /**
+     * Secondary constructor configuring GPU render pipeline directly from [HdrEnhancementConfig].
+     */
+    constructor(
+        outputSurface: Surface,
+        width: Int,
+        height: Int,
+        targetHdrType: TargetHdrType = TargetHdrType.SDR_TO_HDR10,
+        config: HdrEnhancementConfig,
+        prefer10Bit: Boolean = true
+    ) : this(
+        outputSurface = outputSurface,
+        width = width,
+        height = height,
+        targetHdrType = targetHdrType,
+        targetPeakNits = config.targetPeakNits,
+        kneeThreshold = 0.70,
+        dynamicColorEnabled = config.dynamicColorEnabled,
+        dynamicColorIntensity = config.dynamicColorIntensity,
+        prefer10Bit = prefer10Bit
+    )
+
     private val tag = "HdrRenderCore"
 
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
@@ -51,6 +76,8 @@ class HdrRenderCore(
     private var uHdrModeHandle: Int = -1
     private var uTargetPeakNitsHandle: Int = -1
     private var uKneeThresholdHandle: Int = -1
+    private var uDynamicColorEnabledHandle: Int = -1
+    private var uDynamicColorIntensityHandle: Int = -1
 
     private val stMatrix = FloatArray(16)
     private var vertexBuffer: FloatBuffer? = null
@@ -177,6 +204,8 @@ class HdrRenderCore(
         uHdrModeHandle = GLES30.glGetUniformLocation(programId, "uHdrMode")
         uTargetPeakNitsHandle = GLES30.glGetUniformLocation(programId, "uTargetPeakNits")
         uKneeThresholdHandle = GLES30.glGetUniformLocation(programId, "uKneeThreshold")
+        uDynamicColorEnabledHandle = GLES30.glGetUniformLocation(programId, "uDynamicColorEnabled")
+        uDynamicColorIntensityHandle = GLES30.glGetUniformLocation(programId, "uDynamicColorIntensity")
 
         // Create OES External Texture
         val textures = IntArray(1)
@@ -240,6 +269,8 @@ class HdrRenderCore(
         GLES30.glUniform1i(uHdrModeHandle, hdrMode)
         GLES30.glUniform1f(uTargetPeakNitsHandle, targetPeakNits.toFloat())
         GLES30.glUniform1f(uKneeThresholdHandle, kneeThreshold.toFloat())
+        GLES30.glUniform1i(uDynamicColorEnabledHandle, if (dynamicColorEnabled) 1 else 0)
+        GLES30.glUniform1f(uDynamicColorIntensityHandle, dynamicColorIntensity)
 
         // Set vertex attributes
         vertexBuffer?.let { buf ->

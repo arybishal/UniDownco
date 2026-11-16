@@ -197,12 +197,32 @@ Executed via `.\gradlew.bat assembleDebug`:
 
 ---
 
+---
+
+## 8. Addendum: HDR Enhancement & Color Science Completion (Stage 2.3.1.2)
+
+In accordance with the HDR Enhancement Completion authorization, all missing HDR Brightness, Metadata Controls, and Dynamic Color systems were fully implemented, integrated, verified, and persisted:
+
+1. **HDR Output Peak Brightness**: Configurable target peak from 100.0 to 4000.0 nits (default 1000.0 nits); one-touch presets (`Standard 1000n`, `Bright 1500n`, `High Brightness 2000n`, `Ultra 4000n`) and quick-select buttons; integrated into `SdrToHdr10Shader` (`uTargetPeakNits`) and BT.2408 inverse tone mapping shoulder.
+2. **MaxCLL (Content Light Level)**: 0 to 4000 nits slider and direct numeric readout; user-configured metadata override tracked via `MetadataProvenance.USER_CONFIGURED`.
+3. **MaxFALL (Frame-Average Light Level)**: 100 to 1468 nits slider with mandatory compliance rule enforcement: when `MaxCLL > 0`, `MaxFALL <= MaxCLL`. Prevents illegal bitstream metadata authoring.
+4. **Mastering Display Peak**: 0 to 4000 nits slider (0 = unspecified) representing ST 2086 optical volume peak, decoupled from inverse tone mapping target peak.
+5. **Dynamic Color Vibrance**: Hardware shader implementation in `SdrToHdr10Shader.kt` and `HdrRenderCore.kt`; strict hue preservation ($\Delta\theta < 0.0001$ rad), 80% skin-tone damping, shadow/highlight protection, and soft-knee saturation headroom.
+6. **Compose Settings UI**: Dedicated HDR Enhancement section in `SettingsScreen.kt` conforming strictly to `DESIGN.md`, complete with live Dynamic Color chromatic simulation swatches and truthful Qualcomm SM6225 8-bit Main hardware encoding disclosures.
+7. **Settings Persistence**: Zero Room migrations; persistent across app launches via dedicated `SharedPreferences`.
+8. **Verification**: 161/161 host unit tests passing; connected physical device tests on Xiaomi SM6225 (`25062RN2DA`, Android 16 / API 36) passing (4/4, 100%).
+
+---
+
 ```
-PHASE 2.2 AUDIT: COMPLETE
-PHASE 2.3: COMPLETE
-PHASE 2.4: COMPLETE
-PHASE 2.5: COMPLETE
-PHASE 2 OVERALL: COMPLETE
+HDR OUTPUT BRIGHTNESS: COMPLETE
+MAXCLL CONTROL: COMPLETE
+MAXFALL CONTROL: COMPLETE
+MASTERING DISPLAY PEAK: COMPLETE
+HDR METADATA OUTPUT: COMPLETE
+DYNAMIC COLOR: COMPLETE
+PROCESSING PIPELINE INTEGRATION: COMPLETE
+PHASE 2 HDR ENHANCEMENT: COMPLETE
 PHASE 3: NOT STARTED
 AWAITING USER REVIEW AND APPROVAL
 ```

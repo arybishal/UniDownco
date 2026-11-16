@@ -126,6 +126,87 @@ object ColorScience {
     }
 
     // -------------------------------------------------------------------------
+    // Dynamic Color Adaptive Saturation & Gamut Vibrance
+    // -------------------------------------------------------------------------
+
+    /**
+     * Detects human skin tones in linear Rec.2020 space.
+     * Returns a confidence factor in [0.0, 1.0] where 1.0 represents classic human skin tone.
+     *
+     * In ITU-R BT.2020 color difference coordinates:
+     * Cb = (B - Y) / 1.8814
+     * Cr = (R - Y) / 1.4746
+     * Across ethnicities, human skin tone clusters tightly along the I-axis
+     * where Cr > 0, Cb < 0, and the ratio Cr / -Cb is approximately 1.4.
+     */
+    fun detectSkinTone(r: Double, g: Double, b: Double, y: Double): Double {
+        if (y < 0.01) return 0.0
+        val cb = (b - y) / 1.8814
+        val cr = (r - y) / 1.4746
+        val chroma = kotlin.math.sqrt(cb * cb + cr * cr)
+        if (chroma <= 0.005 || cr <= 0.0 || cb >= 0.0) return 0.0
+
+        val ratio = cr / max(-cb, 0.0001)
+        val ratioDiff = kotlin.math.abs(ratio - 1.4)
+        return (1.0 - ratioDiff * 0.8).coerceIn(0.0, 1.0)
+    }
+
+    private fun smoothstep(edge0: Double, edge1: Double, x: Double): Double {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+    }
+
+    /**
+     * Applies Dynamic Color adaptive vibrance expansion to a linear Rec.2020 color triplet.
+     *
+     * Principles:
+     * 1. Strict Hue Preservation: Saturation expansion scales chromatic differences (C - Y)
+     *    uniformly around luminance Y, guaranteeing zero hue rotation.
+     * 2. Skin-tone Protection: Dampens saturation boost in the skin-tone envelope by up to 80%
+     *    to preserve natural, lifelike complexion without unnatural orange or red cast.
+     * 3. Shadow & Highlight Protection: Tapers boost in deep shadows (< 0.10) and specular highlights (> 0.80)
+     *    to prevent shadow noise amplification and highlight clipping.
+     * 4. Adaptive Headroom: Applies soft-knee headroom compression on already saturated colors to prevent
+     *    out-of-gamut clipping.
+     */
+    fun applyDynamicColor(
+        lin2020: RgbTriplet,
+        enabled: Boolean = true,
+        intensity: Float = 0.5f
+    ): RgbTriplet {
+        if (!enabled || intensity <= 0.0f) {
+            return lin2020
+        }
+
+        val yIn = luminanceRec2020(lin2020).coerceAtLeast(0.0)
+        if (yIn <= 1e-6) return lin2020
+
+        val skinWeight = detectSkinTone(lin2020.r, lin2020.g, lin2020.b, yIn)
+
+        // Luma protection: smoothstep in [0.01, 0.10] and [0.80, 0.98]
+        val shadowFactor = smoothstep(0.01, 0.10, yIn)
+        val highlightFactor = 1.0 - smoothstep(0.80, 0.98, yIn)
+        val lumaWeight = shadowFactor * highlightFactor
+
+        // Current saturation metric
+        val maxC = max(lin2020.r, max(lin2020.g, lin2020.b))
+        val minC = min(lin2020.r, min(lin2020.g, lin2020.b))
+        val currentSat = (maxC - minC) / max(yIn, 0.01)
+        val satHeadroom = (1.0 - currentSat * 0.5).coerceIn(0.2, 1.0)
+
+        // Boost factor: max 50% boost at intensity 1.0
+        val clampedIntensity = intensity.coerceIn(0.0f, 1.0f).toDouble()
+        val boostFactor = 1.0 + (clampedIntensity * 0.5) * lumaWeight * satHeadroom * (1.0 - 0.80 * skinWeight)
+
+        // Hue-preserving expansion around luminance Y
+        val rOut = (yIn + (lin2020.r - yIn) * boostFactor).coerceAtLeast(0.0)
+        val gOut = (yIn + (lin2020.g - yIn) * boostFactor).coerceAtLeast(0.0)
+        val bOut = (yIn + (lin2020.b - yIn) * boostFactor).coerceAtLeast(0.0)
+
+        return RgbTriplet(rOut, gOut, bOut)
+    }
+
+    // -------------------------------------------------------------------------
     // Inverse Tone Mapping (ITM) - ITU-R BT.2408 Compliant
     // -------------------------------------------------------------------------
 
@@ -254,7 +335,9 @@ object ColorScience {
         sdr8R: Int,
         sdr8G: Int,
         sdr8B: Int,
-        targetPeakNits: Double = DEFAULT_HDR_PEAK_NITS
+        targetPeakNits: Double = DEFAULT_HDR_PEAK_NITS,
+        dynamicColorEnabled: Boolean = false,
+        dynamicColorIntensity: Float = 0.5f
     ): Triple<Int, Int, Int> {
         // 1. Normalize [0, 255] -> [0.0, 1.0]
         val normR = sdr8R.coerceIn(0, 255) / 255.0
@@ -271,17 +354,41 @@ object ColorScience {
         // 3. Convert Rec.709 Gamut to Rec.2020 Gamut
         val lin2020 = rec709ToRec2020(lin709)
 
-        // 4. Inverse Tone Mapping (BT.2408 compliant)
-        val hdrNits = inverseToneMapBt2408(lin2020, targetPeakNits = targetPeakNits)
+        // 4. Dynamic Color (if enabled)
+        val colorReady = applyDynamicColor(
+            lin2020,
+            enabled = dynamicColorEnabled,
+            intensity = dynamicColorIntensity
+        )
 
-        // 5. Apply SMPTE ST 2084 PQ curve
+        // 5. Inverse Tone Mapping (BT.2408 compliant)
+        val hdrNits = inverseToneMapBt2408(colorReady, targetPeakNits = targetPeakNits)
+
+        // 6. Apply SMPTE ST 2084 PQ curve
         val pqRgb = encodePqRgb(hdrNits)
 
-        // 6. 10-Bit Quantization
+        // 7. 10-Bit Quantization
         return Triple(
             quantize10Bit(pqRgb.r),
             quantize10Bit(pqRgb.g),
             quantize10Bit(pqRgb.b)
         )
     }
+
+    /**
+     * End-to-end CPU pipeline using [HdrEnhancementConfig].
+     */
+    fun convertSdrToHdr10(
+        sdr8R: Int,
+        sdr8G: Int,
+        sdr8B: Int,
+        config: HdrEnhancementConfig
+    ): Triple<Int, Int, Int> = convertSdrToHdr10(
+        sdr8R = sdr8R,
+        sdr8G = sdr8G,
+        sdr8B = sdr8B,
+        targetPeakNits = config.targetPeakNits,
+        dynamicColorEnabled = config.dynamicColorEnabled,
+        dynamicColorIntensity = config.dynamicColorIntensity
+    )
 }

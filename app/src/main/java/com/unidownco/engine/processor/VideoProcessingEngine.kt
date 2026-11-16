@@ -17,6 +17,7 @@ import com.unidownco.engine.encoder.QualityProfile
 import com.unidownco.engine.encoder.VideoEncoder
 import com.unidownco.engine.hardware.HardwareCapabilities
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.hdr.HdrEnhancementConfig
 import com.unidownco.engine.hdr.HdrMasteringDisplay
 import com.unidownco.engine.hdr.HdrStaticMetadata
 import com.unidownco.engine.hdr.MetadataProvenance
@@ -67,6 +68,7 @@ class VideoProcessingEngine(
         profile: QualityProfile = QualityProfile.BALANCED,
         targetHdrType: TargetHdrType = TargetHdrType.SDR_PASSTHROUGH,
         hdrStaticMetadata: HdrStaticMetadata? = null,
+        hdrEnhancementConfig: HdrEnhancementConfig? = null,
         onProgress: (EncodingProgress) -> Unit
     ): Result<EncodingResult> = withContext(Dispatchers.IO) {
         if (!sourceFile.exists() || sourceFile.length() == 0L) {
@@ -225,6 +227,9 @@ class VideoProcessingEngine(
             // Resolve HDR metadata with explicit, non-fabricated provenance
             val resolvedHdrMetadata: HdrStaticMetadata? = when {
                 hdrStaticMetadata != null -> hdrStaticMetadata
+                hdrEnhancementConfig != null && actualTargetHdrType == TargetHdrType.SDR_TO_HDR10 -> {
+                    hdrEnhancementConfig.toHdrStaticMetadata()
+                }
                 actualTargetHdrType == TargetHdrType.SDR_TO_HDR10 -> {
                     // Mathematically estimated from inverse tone mapping curve (target peak 1000 nits)
                     HdrStaticMetadata.createMathematicallyEstimated(
@@ -271,12 +276,16 @@ class VideoProcessingEngine(
                         width = targetWidth,
                         height = targetHeight,
                         targetHdrType = actualTargetHdrType,
+                        targetPeakNits = hdrEnhancementConfig?.targetPeakNits ?: 1000.0,
+                        kneeThreshold = 0.70,
+                        dynamicColorEnabled = hdrEnhancementConfig?.dynamicColorEnabled ?: false,
+                        dynamicColorIntensity = hdrEnhancementConfig?.dynamicColorIntensity ?: 0.5f,
                         prefer10Bit = capabilities.supportsHardwareMain10
                     )
                     renderCore = core
                     decoderOutputSurface = core.decoderInputSurface
                         ?: throw IllegalStateException("HdrRenderCore decoder input surface was null")
-                    UniLog.i(tag, "Initialized HdrRenderCore for SDR-to-HDR10 conversion (10-bit surface: ${core.isActually10BitSurface})")
+                    UniLog.i(tag, "Initialized HdrRenderCore for SDR-to-HDR10 conversion (10-bit surface: ${core.isActually10BitSurface}, peak: ${core})")
                 } catch (e: Exception) {
                     UniLog.e(tag, "Failed initializing HdrRenderCore: ${e.message}, falling back to direct surface", e)
                     decoderOutputSurface = encoderInputSurface

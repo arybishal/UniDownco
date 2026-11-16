@@ -3,9 +3,13 @@ package com.unidownco.feature.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.CleaningServices
@@ -24,10 +30,13 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -53,9 +62,12 @@ import com.unidownco.core.design.theme.AppTypography
 import com.unidownco.core.design.theme.UniColors
 import com.unidownco.core.design.theme.UniDownTheme
 import com.unidownco.core.design.theme.UniMonoTypography
+import com.unidownco.core.design.theme.UniShapes
 import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.core.logging.UniLog
 import com.unidownco.core.storage.StorageManager
+import com.unidownco.engine.hdr.HdrEnhancementConfig
+import com.unidownco.engine.hdr.HdrPreset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -276,7 +288,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Video Enhancement & HDR10 Configuration (Stage 2.3.1)
+            // Video Enhancement, HDR10 Controls & Color Science (Stage 2.3.1.2)
             item {
                 val caps = uiState.hardwareCaps
                 val supportsMain10 = caps.supportsHardwareMain10
@@ -292,7 +304,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "VIDEO ENHANCEMENT & HDR10",
+                                text = "HDR ENHANCEMENT & COLOR SCIENCE",
                                 style = AppTypography.labelLarge,
                                 color = colors.primaryText
                             )
@@ -306,21 +318,29 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(UniSpacing.sm))
 
                         Text(
-                            text = "Configure genuine 10-bit HEVC Main10 encoding, color spaces, and dynamic range expansion.",
+                            text = "Configure ITU-R BT.2408 inverse tone mapping, specular peak brightness, static metadata overrides (MaxCLL/MaxFALL), and GPU Dynamic Color vibrance.",
                             style = AppTypography.bodySmall,
                             color = colors.secondaryText
                         )
 
                         Spacer(modifier = Modifier.height(UniSpacing.md))
 
-                        // Hardware Capability Diagnostics Line
-                        Text(
-                            text = "Encoder: ${caps.preferredEncoderName}\n" +
-                                    "Profiles: ${if (supportsMain10) "Main (8-bit), Main10 (10-bit)" else "Main (8-bit only)"}\n" +
-                                    "Hardware Status: ${if (supportsMain10) "10-bit HDR hardware encoding available" else "10-bit HDR hardware encoding unsupported on this SoC (${caps.deviceModel}) - Main 8-bit SDR active"}",
-                            style = UniMonoTypography.TechnicalSmall,
-                            color = colors.tertiaryText
-                        )
+                        // Hardware Diagnostics Banner
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(colors.surfaceSubtle, UniShapes.CardShape)
+                                .border(BorderStroke(1.dp, colors.subtleBorder), UniShapes.CardShape)
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = "Encoder: ${caps.preferredEncoderName}\n" +
+                                        "Profiles: ${if (supportsMain10) "Main (8-bit), Main10 (10-bit)" else "Main (8-bit only)"}\n" +
+                                        "Hardware Capability: ${if (supportsMain10) "10-bit HDR hardware encoding available" else "10-bit Main10 hardware encoding unsupported on ${caps.deviceModel} (SM6225 / bengal). Bitstream inspection, metadata modeling, and SDR encoding active."}",
+                                style = UniMonoTypography.TechnicalSmall,
+                                color = colors.tertiaryText
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(UniSpacing.md))
 
@@ -386,18 +406,401 @@ fun SettingsScreen(
                                     )
                                     if (!supportsMain10) {
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        UniTechBadge(label = "UNSUPPORTED")
+                                        UniTechBadge(label = "UNSUPPORTED ON SM6225")
                                     }
                                 }
                                 Text(
                                     text = if (supportsMain10) {
                                         "Transforms Rec.709 to Rec.2020 wide gamut with ITU-R BT.2408 inverse tone mapping and static metadata"
                                     } else {
-                                        "Hardware HEVC Main10 encoder is absent on this SoC. To prevent fake HDR files, this option is disabled."
+                                        "Hardware HEVC Main10 encoder is absent on this SoC. Controls below configure HDR profiles for supported targets."
                                     },
                                     style = AppTypography.bodySmall,
                                     color = colors.tertiaryText
                                 )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.lg))
+
+                        // Section: HDR Presets
+                        Text(
+                            text = "HDR10 MASTERING & TARGET PRESETS",
+                            style = AppTypography.labelMedium,
+                            color = colors.primaryText
+                        )
+                        Spacer(modifier = Modifier.height(UniSpacing.xs))
+                        Text(
+                            text = "One-touch standard configurations for display mastering targets",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (preset in HdrPreset.entries) {
+                                val isSelected = uiState.selectedHdrPreset == preset
+                                val bg = if (isSelected) UniColors.AccentYellow else colors.surfaceSubtle
+                                val fg = Color.Black
+                                val border = if (isSelected) Color.Black else colors.subtleBorder
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(bg, UniShapes.ButtonShape)
+                                        .border(BorderStroke(1.dp, border), UniShapes.ButtonShape)
+                                        .clickable { viewModel.onSelectHdrPreset(preset) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = preset.displayName,
+                                        style = AppTypography.labelSmall,
+                                        color = fg
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.lg))
+
+                        // Section: Output Peak Brightness Slider
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "HDR OUTPUT PEAK BRIGHTNESS",
+                                style = AppTypography.labelMedium,
+                                color = colors.primaryText
+                            )
+                            UniTechBadge(
+                                label = "${uiState.hdrTargetPeakNits.toInt()} cd/m² (nits)",
+                                isHighlighted = true
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Specifies target display peak for BT.2408 inverse tone mapping shoulder. Diffuse white remains locked at 203 nits.",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+
+                        Slider(
+                            value = uiState.hdrTargetPeakNits,
+                            onValueChange = viewModel::onHdrTargetPeakChanged,
+                            valueRange = 100f..4000f,
+                            steps = 77,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.Black,
+                                activeTrackColor = Color.Black,
+                                inactiveTrackColor = colors.surfaceSubtle
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Quick-Select Target Peak Chips
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            for (peak in HdrEnhancementConfig.QUICK_SELECT_PEAKS) {
+                                val isCurrent = uiState.hdrTargetPeakNits == peak.toFloat()
+                                Box(
+                                    modifier = Modifier
+                                        .background(if (isCurrent) Color.Black else colors.surfaceSubtle, UniShapes.BadgeShape)
+                                        .border(BorderStroke(1.dp, Color.Black), UniShapes.BadgeShape)
+                                        .clickable { viewModel.onHdrTargetPeakChanged(peak.toFloat()) }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "${peak.toInt()}n",
+                                        style = UniMonoTypography.TechnicalSmall,
+                                        color = if (isCurrent) Color.White else colors.primaryText
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.lg))
+
+                        // Section: MaxCLL (Maximum Content Light Level)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MAXCLL (CONTENT LIGHT LEVEL)",
+                                style = AppTypography.labelMedium,
+                                color = colors.primaryText
+                            )
+                            UniTechBadge(
+                                label = if (uiState.hdrMaxCll > 0) "${uiState.hdrMaxCll} cd/m²" else "UNSPECIFIED (0)"
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Declares the maximum single-pixel luminance in stream static metadata (CTA-861.3 / SEI 144 / MP4 clli). 0 = unspecified.",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+
+                        Slider(
+                            value = uiState.hdrMaxCll.toFloat(),
+                            onValueChange = { viewModel.onMaxCllChanged(it.toInt()) },
+                            valueRange = 0f..4000f,
+                            steps = 79,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.Black,
+                                activeTrackColor = Color.Black,
+                                inactiveTrackColor = colors.surfaceSubtle
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+
+                        // Section: MaxFALL (Maximum Frame-Average Light Level)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MAXFALL (FRAME-AVERAGE LIGHT LEVEL)",
+                                style = AppTypography.labelMedium,
+                                color = colors.primaryText
+                            )
+                            UniTechBadge(
+                                label = "${uiState.hdrMaxFall} cd/m²"
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Declares maximum frame average luminance (100–1468 nits). Mandatory standard rule: MaxFALL must not exceed MaxCLL.",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+
+                        Slider(
+                            value = uiState.hdrMaxFall.toFloat(),
+                            onValueChange = { viewModel.onMaxFallChanged(it.toInt()) },
+                            valueRange = 100f..1468f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.Black,
+                                activeTrackColor = Color.Black,
+                                inactiveTrackColor = colors.surfaceSubtle
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Validation Error Alert Banner (if MaxFALL > MaxCLL)
+                        if (uiState.hdrValidationError != null) {
+                            Spacer(modifier = Modifier.height(UniSpacing.sm))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(UniColors.ErrorBackground, UniShapes.CardShape)
+                                    .border(BorderStroke(1.dp, UniColors.Error), UniShapes.CardShape)
+                                    .padding(12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = UniColors.Error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "METADATA VALIDATION ERROR: ${uiState.hdrValidationError}\nEnforce MaxFALL ≤ MaxCLL to author standards-compliant streams.",
+                                        style = AppTypography.labelSmall,
+                                        color = UniColors.Error
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.lg))
+
+                        // Section: Mastering Display Peak
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MASTERING DISPLAY PEAK",
+                                style = AppTypography.labelMedium,
+                                color = colors.primaryText
+                            )
+                            UniTechBadge(
+                                label = if (uiState.hdrMasteringPeakNits > 0f) "${uiState.hdrMasteringPeakNits.toInt()} cd/m²" else "UNSPECIFIED (0)"
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "SMPTE ST 2086 mastering display peak luminance metadata. Independent from inverse tone mapping target peak. 0 = unspecified.",
+                            style = AppTypography.bodySmall,
+                            color = colors.tertiaryText
+                        )
+
+                        Slider(
+                            value = uiState.hdrMasteringPeakNits,
+                            onValueChange = viewModel::onMasteringPeakChanged,
+                            valueRange = 0f..4000f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.Black,
+                                activeTrackColor = Color.Black,
+                                inactiveTrackColor = colors.surfaceSubtle
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.lg))
+
+                        // Section: Dynamic Color
+                        SettingToggleRow(
+                            title = "Dynamic Color Vibrance",
+                            subtitle = "Adaptive saturation expansion with strict hue preservation, 80% skin-tone damping, and highlight/shadow protection",
+                            checked = uiState.hdrDynamicColorEnabled,
+                            onCheckedChange = viewModel::onToggleDynamicColor
+                        )
+
+                        if (uiState.hdrDynamicColorEnabled) {
+                            Spacer(modifier = Modifier.height(UniSpacing.md))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "DYNAMIC COLOR INTENSITY",
+                                    style = AppTypography.labelSmall,
+                                    color = colors.primaryText
+                                )
+                                UniTechBadge(
+                                    label = "${(uiState.hdrDynamicColorIntensity * 100).toInt()}%",
+                                    isHighlighted = true
+                                )
+                            }
+
+                            Slider(
+                                value = uiState.hdrDynamicColorIntensity,
+                                onValueChange = viewModel::onDynamicColorIntensityChanged,
+                                valueRange = 0.0f..1.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.Black,
+                                    activeTrackColor = Color.Black,
+                                    inactiveTrackColor = colors.surfaceSubtle
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Dynamic Color Preview & Spectrum Card
+                            Spacer(modifier = Modifier.height(UniSpacing.sm))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(colors.surfaceSubtle, UniShapes.CardShape)
+                                    .border(BorderStroke(1.dp, colors.subtleBorder), UniShapes.CardShape)
+                                    .padding(12.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "DYNAMIC COLOR CHROMATIC PREVIEW SIMULATION",
+                                        style = AppTypography.labelSmall,
+                                        color = colors.primaryText
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Hardware shader operates per-pixel during transcode. Demonstrating adaptive damping on skin tones vs expansion on foliage and sky:",
+                                        style = AppTypography.bodySmall,
+                                        color = colors.tertiaryText
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // 4 Swatch Simulation Bands
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // Skin Tone Swatch
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(32.dp)
+                                                    .background(Color(0xFFE0AC69), RoundedCornerShape(4.dp))
+                                                    .border(BorderStroke(1.dp, Color.Black), RoundedCornerShape(4.dp))
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Complexion", style = UniMonoTypography.TechnicalSmall, color = colors.primaryText)
+                                            Text("Protected", style = AppTypography.labelSmall, color = UniColors.Success)
+                                        }
+
+                                        // Foliage Swatch
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(32.dp)
+                                                    .background(Color(0xFF2E7D32), RoundedCornerShape(4.dp))
+                                                    .border(BorderStroke(1.dp, Color.Black), RoundedCornerShape(4.dp))
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Foliage", style = UniMonoTypography.TechnicalSmall, color = colors.primaryText)
+                                            Text("+Expanded", style = AppTypography.labelSmall, color = Color.Black)
+                                        }
+
+                                        // Sky Swatch
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(32.dp)
+                                                    .background(Color(0xFF0288D1), RoundedCornerShape(4.dp))
+                                                    .border(BorderStroke(1.dp, Color.Black), RoundedCornerShape(4.dp))
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Azure Sky", style = UniMonoTypography.TechnicalSmall, color = colors.primaryText)
+                                            Text("+Expanded", style = AppTypography.labelSmall, color = Color.Black)
+                                        }
+
+                                        // Shadow Swatch
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(32.dp)
+                                                    .background(Color(0xFF1A1A1A), RoundedCornerShape(4.dp))
+                                                    .border(BorderStroke(1.dp, Color.Black), RoundedCornerShape(4.dp))
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Shadow", style = UniMonoTypography.TechnicalSmall, color = colors.primaryText)
+                                            Text("Clamped", style = AppTypography.labelSmall, color = colors.tertiaryText)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
