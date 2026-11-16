@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.unidownco.core.storage.StorageManager
+import com.unidownco.engine.hardware.HardwareCapabilities
+import com.unidownco.engine.hardware.HardwareCapabilityRegistry
 import com.unidownco.engine.ytdlp.YtDlpEngineManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,11 +19,13 @@ data class SettingsUiState(
     val autoEncodeToHevc: Boolean = true,
     val wifiOnlyDownload: Boolean = false,
     val defaultResolution: String = "1080p",
+    val defaultHdrMode: String = "OFF", // OFF (SDR BT.709) or HDR10 (BT.2020 ST 2084 PQ)
     val storageLocation: String = "Movies/downloads",
     val cacheSizeBytes: Long = 0L,
     val ytDlpVersion: String = YtDlpEngineManager.ytDlpVersion ?: "Bundled",
     val isUpdatingYtDlp: Boolean = false,
-    val ytDlpUpdateMessage: String? = null
+    val ytDlpUpdateMessage: String? = null,
+    val hardwareCaps: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities()
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,6 +52,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun onSelectResolution(resolution: String) {
         _uiState.value = _uiState.value.copy(defaultResolution = resolution)
+    }
+
+    fun onSelectHdrMode(mode: String) {
+        _uiState.value = _uiState.value.copy(defaultHdrMode = mode)
     }
 
     fun updateYtDlp() {

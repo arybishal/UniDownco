@@ -36,7 +36,7 @@ enum class ProcessingPreset(
             DIRECT -> PresetStatus.AVAILABLE
             HDR10_ENHANCED -> {
                 if (caps.supportsHardwareMain10) {
-                    PresetStatus.PLANNED_STEP_2_3
+                    PresetStatus.AVAILABLE
                 } else {
                     PresetStatus.HARDWARE_UNSUPPORTED
                 }
@@ -60,7 +60,7 @@ enum class ProcessingPreset(
             DIRECT -> "Saves original video stream without re-encoding (Operational)"
             HDR10_ENHANCED -> {
                 if (caps.supportsHardwareMain10) {
-                    "Hardware 10-bit HEVC BT.2020 HDR pipeline (Coming in Step 2.3)"
+                    "Hardware 10-bit HEVC BT.2020 ST 2084 HDR pipeline (Active)"
                 } else {
                     "10-bit HDR encoding unsupported on this SoC (Snapdragon 680/685 supports 8-bit Main only)"
                 }

@@ -82,8 +82,8 @@ class Step2EncodingPipelineTest {
             preferredProfile = 2 // HEVCProfileMain10
         )
 
-        assertEquals(PresetStatus.PLANNED_STEP_2_3, ProcessingPreset.HDR10_ENHANCED.getStatus(sm8650Caps))
-        assertEquals("Step 2.3", ProcessingPreset.HDR10_ENHANCED.getBadge(sm8650Caps))
+        assertEquals(PresetStatus.AVAILABLE, ProcessingPreset.HDR10_ENHANCED.getStatus(sm8650Caps))
+        assertEquals("Active", ProcessingPreset.HDR10_ENHANCED.getBadge(sm8650Caps))
         assertTrue(sm8650Caps.supportsHardwareMain10)
     }
 

@@ -5,6 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.Build
 import android.os.PowerManager
+import android.view.Surface
 import com.unidownco.core.logging.UniLog
 import com.unidownco.engine.audio.AudioTrackProcessor
 import com.unidownco.engine.decoder.MediaCodecVideoDecoder
@@ -16,6 +17,9 @@ import com.unidownco.engine.encoder.QualityProfile
 import com.unidownco.engine.encoder.VideoEncoder
 import com.unidownco.engine.hardware.HardwareCapabilities
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.hdr.HdrStaticMetadata
+import com.unidownco.engine.hdr.TargetHdrType
+import com.unidownco.engine.hdr.gpu.HdrRenderCore
 import com.unidownco.engine.muxer.MediaMuxerController
 import com.unidownco.engine.verifier.ProcessingOutputValidator
 import kotlinx.coroutines.CancellationException
@@ -31,7 +35,8 @@ import java.security.MessageDigest
 /**
  * Production-quality Android MediaCodec hardware-accelerated HEVC video processing engine.
  * Decodes source streams, encodes to HEVC Main (8-bit) or Main10 (10-bit where genuinely supported),
- * passes lossless audio tracks through, enforces backpressure, and performs post-processing validation.
+ * executes GPU-accelerated SDR-to-HDR10 color expansion via [HdrRenderCore], passes lossless audio
+ * tracks through, enforces backpressure, and performs post-processing validation.
  */
 class VideoProcessingEngine(
     private val capabilities: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities(),
@@ -44,6 +49,22 @@ class VideoProcessingEngine(
         sourceFile: File,
         outputFile: File,
         profile: QualityProfile,
+        onProgress: (EncodingProgress) -> Unit
+    ): Result<EncodingResult> = encode(
+        sourceFile = sourceFile,
+        outputFile = outputFile,
+        profile = profile,
+        targetHdrType = TargetHdrType.SDR_PASSTHROUGH,
+        hdrStaticMetadata = null,
+        onProgress = onProgress
+    )
+
+    suspend fun encode(
+        sourceFile: File,
+        outputFile: File,
+        profile: QualityProfile = QualityProfile.BALANCED,
+        targetHdrType: TargetHdrType = TargetHdrType.SDR_PASSTHROUGH,
+        hdrStaticMetadata: HdrStaticMetadata? = null,
         onProgress: (EncodingProgress) -> Unit
     ): Result<EncodingResult> = withContext(Dispatchers.IO) {
         if (!sourceFile.exists() || sourceFile.length() == 0L) {
@@ -66,6 +87,7 @@ class VideoProcessingEngine(
         var videoExtractor: MediaExtractor? = null
         var audioProcessor: AudioTrackProcessor? = null
         var muxerController: MediaMuxerController? = null
+        var renderCore: HdrRenderCore? = null
         var encoder: MediaCodecVideoEncoder? = null
         var decoder: MediaCodecVideoDecoder? = null
 
@@ -163,25 +185,82 @@ class VideoProcessingEngine(
                 audioProcessor.registerWithMuxer(muxer)
             }
 
+            // Detect if source is already genuine HDR (BT.2020 + ST 2084 PQ or HLG)
+            var isSourceAlreadyHdr = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val colorStd = if (sourceVideoFormat.containsKey(MediaFormat.KEY_COLOR_STANDARD)) {
+                    sourceVideoFormat.getInteger(MediaFormat.KEY_COLOR_STANDARD)
+                } else -1
+                val colorTrans = if (sourceVideoFormat.containsKey(MediaFormat.KEY_COLOR_TRANSFER)) {
+                    sourceVideoFormat.getInteger(MediaFormat.KEY_COLOR_TRANSFER)
+                } else -1
+
+                if (colorStd == MediaFormat.COLOR_STANDARD_BT2020 &&
+                    (colorTrans == MediaFormat.COLOR_TRANSFER_ST2084 || colorTrans == MediaFormat.COLOR_TRANSFER_HLG)) {
+                    isSourceAlreadyHdr = true
+                }
+            }
+
+            // Determine actual target HDR type based on hardware capability and source
+            val actualTargetHdrType = when {
+                targetHdrType == TargetHdrType.SDR_TO_HDR10 && !capabilities.supportsHardwareMain10 -> {
+                    UniLog.w(
+                        tag,
+                        "HDR10 requested, but hardware encoder on ${capabilities.deviceModel} lacks HEVC Main10 support. " +
+                        "Adapting pipeline to 8-bit HEVC Main SDR mode."
+                    )
+                    TargetHdrType.SDR_PASSTHROUGH
+                }
+                targetHdrType == TargetHdrType.SDR_TO_HDR10 && isSourceAlreadyHdr -> {
+                    UniLog.i(tag, "Source is already HDR. Preserving source HDR characteristics without inverse tone mapping.")
+                    TargetHdrType.HDR10_PRESERVE
+                }
+                else -> targetHdrType
+            }
+
+            val needsGpuRender = (actualTargetHdrType == TargetHdrType.SDR_TO_HDR10)
+
             // Initialize hardware encoder with surface input
             val enc = MediaCodecVideoEncoder(
                 width = targetWidth,
                 height = targetHeight,
                 fps = sourceFps,
                 qualityProfile = profile,
-                capabilities = capabilities
+                capabilities = capabilities,
+                targetHdrType = actualTargetHdrType,
+                hdrStaticMetadata = hdrStaticMetadata
             )
             encoder = enc
 
-            val inputSurface = enc.inputSurface
+            val encoderInputSurface = enc.inputSurface
                 ?: throw IllegalStateException("Encoder input surface was null")
 
-            // Initialize decoder with encoder input surface
+            var decoderOutputSurface: Surface = encoderInputSurface
+            if (needsGpuRender) {
+                try {
+                    val core = HdrRenderCore(
+                        outputSurface = encoderInputSurface,
+                        width = targetWidth,
+                        height = targetHeight,
+                        targetHdrType = actualTargetHdrType,
+                        prefer10Bit = capabilities.supportsHardwareMain10
+                    )
+                    renderCore = core
+                    decoderOutputSurface = core.decoderInputSurface
+                        ?: throw IllegalStateException("HdrRenderCore decoder input surface was null")
+                    UniLog.i(tag, "Initialized HdrRenderCore for SDR-to-HDR10 conversion (10-bit surface: ${core.isActually10BitSurface})")
+                } catch (e: Exception) {
+                    UniLog.e(tag, "Failed initializing HdrRenderCore: ${e.message}, falling back to direct surface", e)
+                    decoderOutputSurface = encoderInputSurface
+                }
+            }
+
+            // Initialize decoder with decoder output surface
             val dec = MediaCodecVideoDecoder(
                 extractor = vExt,
                 videoTrackIndex = videoTrackIndex,
                 sourceFormat = sourceVideoFormat,
-                outputSurface = inputSurface
+                outputSurface = decoderOutputSurface
             )
             decoder = dec
 
@@ -227,12 +306,15 @@ class VideoProcessingEngine(
                     if (fed) madeProgress = true
                 }
 
-                // 2. Drain decoder output to encoder surface
+                // 2. Drain decoder output to render surface / encoder surface
                 if (!dec.isOutputEos) {
                     val rendered = dec.drainOutput(timeoutUs = 2_000L)
                     if (rendered) {
                         framesSinceLastFps++
                         madeProgress = true
+                        if (renderCore != null) {
+                            renderCore.renderFrame(dec.lastDecodedPtsUs * 1000L)
+                        }
                     }
                 }
 
@@ -325,11 +407,14 @@ class VideoProcessingEngine(
                 )
             )
 
+            val expectedHdr = (actualTargetHdrType == TargetHdrType.SDR_TO_HDR10 || actualTargetHdrType == TargetHdrType.HDR10_PRESERVE) && capabilities.supportsHardwareMain10
+
             val validation = ProcessingOutputValidator.validate(
                 outputFile = tempOutputFile,
                 expectedHasAudio = audioProcessor.hasAudioTrack,
                 expectedDurationSeconds = durationUs / 1_000_000L,
-                expectedRotationDegrees = rotationDegrees
+                expectedRotationDegrees = rotationDegrees,
+                expectedHdr10 = expectedHdr
             )
 
             if (!validation.isValid) {
@@ -398,6 +483,7 @@ class VideoProcessingEngine(
             tempOutputFile?.delete()
             Result.failure(e)
         } finally {
+            try { renderCore?.release() } catch (_: Exception) {}
             try { decoder?.release() } catch (_: Exception) {}
             try { encoder?.release() } catch (_: Exception) {}
             try { audioProcessor?.release() } catch (_: Exception) {}

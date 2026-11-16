@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,8 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -269,6 +272,134 @@ fun SettingsScreen(
                             checked = uiState.wifiOnlyDownload,
                             onCheckedChange = viewModel::onToggleWifiOnly
                         )
+                    }
+                }
+            }
+
+            // Video Enhancement & HDR10 Configuration (Stage 2.3.1)
+            item {
+                val caps = uiState.hardwareCaps
+                val supportsMain10 = caps.supportsHardwareMain10
+
+                UniCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = colors.primaryText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "VIDEO ENHANCEMENT & HDR10",
+                                style = AppTypography.labelLarge,
+                                color = colors.primaryText
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            UniTechBadge(
+                                label = if (supportsMain10) "MAIN10 ACTIVE" else "8-BIT HW ONLY",
+                                isHighlighted = supportsMain10
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(UniSpacing.sm))
+
+                        Text(
+                            text = "Configure genuine 10-bit HEVC Main10 encoding, color spaces, and dynamic range expansion.",
+                            style = AppTypography.bodySmall,
+                            color = colors.secondaryText
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+
+                        // Hardware Capability Diagnostics Line
+                        Text(
+                            text = "Encoder: ${caps.preferredEncoderName}\n" +
+                                    "Profiles: ${if (supportsMain10) "Main (8-bit), Main10 (10-bit)" else "Main (8-bit only)"}\n" +
+                                    "Hardware Status: ${if (supportsMain10) "10-bit HDR hardware encoding available" else "10-bit HDR hardware encoding unsupported on this SoC (${caps.deviceModel}) - Main 8-bit SDR active"}",
+                            style = UniMonoTypography.TechnicalSmall,
+                            color = colors.tertiaryText
+                        )
+
+                        Spacer(modifier = Modifier.height(UniSpacing.md))
+
+                        // SDR Option
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.onSelectHdrMode("OFF") }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.defaultHdrMode == "OFF",
+                                onClick = { viewModel.onSelectHdrMode("OFF") },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = Color.Black,
+                                    unselectedColor = colors.tertiaryText
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Standard SDR (Rec.709 8-bit)",
+                                    style = AppTypography.bodyMedium,
+                                    color = colors.primaryText
+                                )
+                                Text(
+                                    text = "Encodes in universal 8-bit HEVC Main profile compatible with all screens",
+                                    style = AppTypography.bodySmall,
+                                    color = colors.tertiaryText
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // HDR10 Option
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = supportsMain10) { viewModel.onSelectHdrMode("HDR10") }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.defaultHdrMode == "HDR10" && supportsMain10,
+                                onClick = { if (supportsMain10) viewModel.onSelectHdrMode("HDR10") },
+                                enabled = supportsMain10,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = Color.Black,
+                                    unselectedColor = colors.tertiaryText,
+                                    disabledSelectedColor = colors.tertiaryText,
+                                    disabledUnselectedColor = colors.surfaceSubtle
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Genuine HDR10 (BT.2020 ST 2084 10-bit)",
+                                        style = AppTypography.bodyMedium,
+                                        color = if (supportsMain10) colors.primaryText else colors.tertiaryText
+                                    )
+                                    if (!supportsMain10) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        UniTechBadge(label = "UNSUPPORTED")
+                                    }
+                                }
+                                Text(
+                                    text = if (supportsMain10) {
+                                        "Transforms Rec.709 to Rec.2020 wide gamut with ITU-R BT.2408 inverse tone mapping and static metadata"
+                                    } else {
+                                        "Hardware HEVC Main10 encoder is absent on this SoC. To prevent fake HDR files, this option is disabled."
+                                    },
+                                    style = AppTypography.bodySmall,
+                                    color = colors.tertiaryText
+                                )
+                            }
+                        }
                     }
                 }
             }

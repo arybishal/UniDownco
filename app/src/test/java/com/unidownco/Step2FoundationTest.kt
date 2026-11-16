@@ -35,9 +35,9 @@ class Step2FoundationTest {
         assertThat(ProcessingPreset.DIRECT.getStatus(flagshipCaps)).isEqualTo(PresetStatus.AVAILABLE)
         assertThat(ProcessingPreset.DIRECT.getBadge(flagshipCaps)).isEqualTo("Active")
 
-        assertThat(ProcessingPreset.HDR10_ENHANCED.getStatus(flagshipCaps)).isEqualTo(PresetStatus.PLANNED_STEP_2_3)
-        assertThat(ProcessingPreset.HDR10_ENHANCED.getBadge(flagshipCaps)).isEqualTo("Step 2.3")
-        assertThat(ProcessingPreset.HDR10_ENHANCED.getDescription(flagshipCaps)).contains("Coming in Step 2.3")
+        assertThat(ProcessingPreset.HDR10_ENHANCED.getStatus(flagshipCaps)).isEqualTo(PresetStatus.AVAILABLE)
+        assertThat(ProcessingPreset.HDR10_ENHANCED.getBadge(flagshipCaps)).isEqualTo("Active")
+        assertThat(ProcessingPreset.HDR10_ENHANCED.getDescription(flagshipCaps)).contains("Active")
 
         assertThat(ProcessingPreset.ULTRA_HDR_60FPS.getStatus(flagshipCaps)).isEqualTo(PresetStatus.PLANNED_STEP_2_4)
         assertThat(ProcessingPreset.ULTRA_HDR_60FPS.getBadge(flagshipCaps)).isEqualTo("Step 2.4")

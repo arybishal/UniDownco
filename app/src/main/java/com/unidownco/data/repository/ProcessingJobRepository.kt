@@ -12,6 +12,8 @@ import com.unidownco.domain.models.EncodingStatus
 import com.unidownco.domain.models.ProcessingPreset
 import com.unidownco.engine.encoder.QualityProfile
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.hdr.HdrStaticMetadata
+import com.unidownco.engine.hdr.TargetHdrType
 import com.unidownco.engine.processor.VideoProcessingEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -72,17 +74,23 @@ class ProcessingJobRepository(
         val job = scope.launch {
             var jobId = 0L
             try {
+                val caps = HardwareCapabilityRegistry.getCapabilities()
+                val targetHdr = if (caps.supportsHardwareMain10 && preset == ProcessingPreset.HDR10_ENHANCED) {
+                    TargetHdrType.SDR_TO_HDR10
+                } else {
+                    TargetHdrType.SDR_PASSTHROUGH
+                }
+
                 // Ensure processing job record exists in Room
                 val existing = processingJobDao.getJobByDownloadId(downloadId)
                 jobId = if (existing != null) {
                     existing.id
                 } else {
-                    val caps = HardwareCapabilityRegistry.getCapabilities()
                     val entity = ProcessingJobEntity(
                         downloadId = downloadId,
                         preset = preset.id,
                         targetCodec = "hevc",
-                        targetHdrType = if (caps.supportsHardwareMain10) "HDR10" else "SDR_BT709",
+                        targetHdrType = if (targetHdr == TargetHdrType.SDR_TO_HDR10) "HDR10" else "SDR_BT709",
                         targetFps = 30,
                         stage = "PREPARING",
                         startedAt = System.currentTimeMillis()
@@ -90,7 +98,7 @@ class ProcessingJobRepository(
                     processingJobDao.insertJob(entity)
                 }
 
-                UniLog.i(tag, "Starting processing job $jobId for download $downloadId: ${sourceFile.name}")
+                UniLog.i(tag, "Starting processing job $jobId for download $downloadId: ${sourceFile.name} (Target HDR: $targetHdr)")
                 processingJobDao.updateProgress(jobId, "PREPARING", 0, 0.0)
 
                 // Enforce destination in Movies/downloads/
@@ -99,7 +107,9 @@ class ProcessingJobRepository(
                 val result = engine.encode(
                     sourceFile = sourceFile,
                     outputFile = destinationFile,
-                    profile = QualityProfile.BALANCED
+                    profile = QualityProfile.BALANCED,
+                    targetHdrType = targetHdr,
+                    hdrStaticMetadata = if (targetHdr == TargetHdrType.SDR_TO_HDR10) HdrStaticMetadata.BT2020_1000NITS else null
                 ) { progress ->
                     scope.launch {
                         try {

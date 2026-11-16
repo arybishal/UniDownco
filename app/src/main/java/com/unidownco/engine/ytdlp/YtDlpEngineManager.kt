@@ -53,7 +53,7 @@ object YtDlpEngineManager {
                     FFmpeg.getInstance().init(appContext)
 
                     ytDlpVersion = try {
-                        YoutubeDL.getInstance().version(appContext)
+                        YoutubeDL.getInstance().version(appContext) ?: "bundled"
                     } catch (_: Exception) {
                         "bundled"
                     }

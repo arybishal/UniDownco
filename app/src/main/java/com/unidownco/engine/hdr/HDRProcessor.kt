@@ -3,6 +3,7 @@ package com.unidownco.engine.hdr
 import java.io.File
 
 enum class TargetHdrType {
+    SDR_PASSTHROUGH,
     SDR_TO_HDR10,
     HDR10_PRESERVE,
     HDR10_PLUS,

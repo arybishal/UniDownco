@@ -5,24 +5,30 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecCapabilities
 import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaFormat
+import android.os.Build
 import android.view.Surface
 import com.unidownco.core.logging.UniLog
 import com.unidownco.engine.hardware.HardwareCapabilities
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.hdr.HdrStaticMetadata
+import com.unidownco.engine.hdr.TargetHdrType
 import com.unidownco.engine.muxer.MediaMuxerController
 import java.nio.ByteBuffer
 
 /**
  * Production-grade hardware HEVC (H.265) video encoder using Android MediaCodec.
  * Supports Surface input (COLOR_FormatSurface), dynamic bitrate calculation,
- * hardware capability probing via [HardwareCapabilityRegistry], and safe EOS drain loops.
+ * hardware capability probing via [HardwareCapabilityRegistry], genuine 10-bit HDR10
+ * Main10 profile negotiation, and safe EOS drain loops.
  */
 class MediaCodecVideoEncoder(
     private val width: Int,
     private val height: Int,
     private val fps: Int,
     private val qualityProfile: QualityProfile = QualityProfile.BALANCED,
-    private val capabilities: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities()
+    private val capabilities: HardwareCapabilities = HardwareCapabilityRegistry.getCapabilities(),
+    val targetHdrType: TargetHdrType = TargetHdrType.SDR_PASSTHROUGH,
+    val hdrStaticMetadata: HdrStaticMetadata? = null
 ) {
     private val tag = "MediaCodecVideoEncoder"
 
@@ -73,13 +79,26 @@ class MediaCodecVideoEncoder(
             // Bitrate mode: prefer VBR
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
 
-            // Select Profile: strictly gated by HardwareCapabilityRegistry
-            if (capabilities.supportsHardwareMain10) {
+            // Select Profile & Color Standards: strictly gated by HardwareCapabilityRegistry
+            val isHdr10Requested = (targetHdrType == TargetHdrType.SDR_TO_HDR10 || targetHdrType == TargetHdrType.HDR10_PRESERVE)
+            if (isHdr10Requested && capabilities.supportsHardwareMain10) {
                 setInteger(MediaFormat.KEY_PROFILE, CodecProfileLevel.HEVCProfileMain10)
-                actualProfile = "Main10 (10-bit)"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
+                    setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_ST2084)
+                    setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                    val meta = hdrStaticMetadata ?: HdrStaticMetadata.BT2020_1000NITS
+                    setByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO, meta.toByteBuffer())
+                }
+                actualProfile = "Main10 (10-bit HDR10)"
             } else {
                 setInteger(MediaFormat.KEY_PROFILE, CodecProfileLevel.HEVCProfileMain)
-                actualProfile = "Main (8-bit)"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                    setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+                    setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                }
+                actualProfile = if (isHdr10Requested) "Main (8-bit SDR - HW Main10 Unsupported)" else "Main (8-bit SDR)"
             }
         }
 
