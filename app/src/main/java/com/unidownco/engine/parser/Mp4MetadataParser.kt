@@ -1,6 +1,9 @@
 package com.unidownco.engine.parser
 
 import com.unidownco.engine.inspector.model.BoxNode
+import com.unidownco.engine.inspector.source.ByteArrayDataSource
+import com.unidownco.engine.inspector.source.RandomAccessFileDataSource
+import com.unidownco.engine.inspector.source.SeekableDataSource
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -173,23 +176,44 @@ object Mp4MetadataParser {
         }
 
         RandomAccessFile(file, "r").use { raf ->
+            val source = RandomAccessFileDataSource(raf)
             val state = BoxParseState()
-            val nodes = parseBoxTree(raf, 0L, raf.length(), state, depth = 0)
+            val nodes = parseBoxTree(source, 0L, source.length, state, depth = 0)
             return buildReport(state, nodes)
         }
     }
 
     /**
-     * Parses an MP4 from an in-memory byte array.
+     * Parses an MP4 container from any seekable data source (File, SAF content URI, or memory buffer).
+     */
+    fun parse(source: SeekableDataSource): Mp4MetadataReport {
+        if (source.length < 8L) {
+            return Mp4MetadataReport(
+                hasMoov = false,
+                videoCodecFourCc = null,
+                colrBox = null,
+                mdcvBox = null,
+                clliBox = null,
+                hvcCBox = null,
+                isMain10 = false,
+                isBt2020 = false,
+                isSmpte2084 = false,
+                isGenuineHdr10 = false,
+                warnings = listOf("Media source too small (< 8 bytes)")
+            )
+        }
+
+        val state = BoxParseState()
+        val nodes = parseBoxTree(source, 0L, source.length, state, depth = 0)
+        return buildReport(state, nodes)
+    }
+
+    /**
+     * Parses an MP4 from an in-memory byte array without disk overhead.
      */
     fun parse(data: ByteArray): Mp4MetadataReport {
-        val temp = File.createTempFile("mp4_test_", ".mp4")
-        try {
-            temp.writeBytes(data)
-            return parse(temp)
-        } finally {
-            try { temp.delete() } catch (_: Exception) {}
-        }
+        val source = ByteArrayDataSource(data)
+        return parse(source)
     }
 
     /**
@@ -200,6 +224,13 @@ object Mp4MetadataParser {
     }
 
     /**
+     * Extracts only the structural BoxNode hierarchy tree from a seekable data source.
+     */
+    fun parseBoxHierarchy(source: SeekableDataSource): List<BoxNode> {
+        return parse(source).boxHierarchy
+    }
+
+    /**
      * Extracts only the structural BoxNode hierarchy tree from an in-memory byte array.
      */
     fun parseBoxHierarchy(data: ByteArray): List<BoxNode> {
@@ -207,7 +238,7 @@ object Mp4MetadataParser {
     }
 
     private fun parseBoxTree(
-        raf: RandomAccessFile,
+        source: SeekableDataSource,
         startOffset: Long,
         endOffset: Long,
         state: BoxParseState,
@@ -218,8 +249,8 @@ object Mp4MetadataParser {
         val header = ByteArray(8)
 
         while (pos + 8 <= endOffset) {
-            raf.seek(pos)
-            val read = raf.read(header)
+            source.seek(pos)
+            val read = source.read(header)
             if (read < 8) break
 
             val size32 = ((header[0].toLong() and 0xFF) shl 24) or
@@ -240,7 +271,7 @@ object Mp4MetadataParser {
                     break
                 }
                 val extSizeBuf = ByteArray(8)
-                val extRead = raf.read(extSizeBuf)
+                val extRead = source.read(extSizeBuf)
                 if (extRead < 8) break
                 val size64 = ByteBuffer.wrap(extSizeBuf).order(ByteOrder.BIG_ENDIAN).long
                 if (size64 < 16L) {
@@ -285,40 +316,40 @@ object Mp4MetadataParser {
             if (type == "moov") {
                 state.hasMoov = true
                 if (depth < MAX_RECURSION_DEPTH) {
-                    children = parseBoxTree(raf, boxDataStart, nextBoxPos, state, depth + 1)
+                    children = parseBoxTree(source, boxDataStart, nextBoxPos, state, depth + 1)
                 }
             } else if (type in CONTAINER_TYPES) {
                 if (depth < MAX_RECURSION_DEPTH) {
-                    children = parseBoxTree(raf, boxDataStart, nextBoxPos, state, depth + 1)
+                    children = parseBoxTree(source, boxDataStart, nextBoxPos, state, depth + 1)
                 }
             } else if (type == "stsd") {
                 // Sample Description Box: 4 bytes version/flags + 4 bytes entry count
                 if (boxPayloadSize >= 8 && depth < MAX_RECURSION_DEPTH) {
-                    children = parseStsdEntries(raf, boxDataStart + 8, nextBoxPos, state, depth + 1)
+                    children = parseStsdEntries(source, boxDataStart + 8, nextBoxPos, state, depth + 1)
                 }
             } else if (type == "hvc1" || type == "hev1" || type == "avc1") {
                 state.videoCodecFourCc = type
                 // VisualSampleEntry has 78 bytes of fixed fields after 8-byte box header = 86 bytes
                 val childStart = pos + 86L
                 if (childStart < nextBoxPos && depth < MAX_RECURSION_DEPTH) {
-                    children = parseBoxTree(raf, childStart, nextBoxPos, state, depth + 1)
+                    children = parseBoxTree(source, childStart, nextBoxPos, state, depth + 1)
                 }
             } else if (type == "mp4a") {
                 // AudioSampleEntry has 28 bytes of fixed fields after 8-byte box header = 36 bytes
                 val childStart = pos + 36L
                 if (childStart < nextBoxPos && depth < MAX_RECURSION_DEPTH) {
-                    children = parseBoxTree(raf, childStart, nextBoxPos, state, depth + 1)
+                    children = parseBoxTree(source, childStart, nextBoxPos, state, depth + 1)
                 }
             } else {
                 // Leaf boxes: parse specific payloads if needed
                 when (type) {
-                    "ftyp" -> if (state.ftypBox == null) state.ftypBox = parseFtypPayload(raf, boxDataStart, boxPayloadSize)
-                    "colr" -> if (state.colrBox == null) state.colrBox = parseColrPayload(raf, boxDataStart, boxPayloadSize)
-                    "mdcv" -> if (state.mdcvBox == null) state.mdcvBox = parseMdcvPayload(raf, boxDataStart, boxPayloadSize)
-                    "clli" -> if (state.clliBox == null) state.clliBox = parseClliPayload(raf, boxDataStart, boxPayloadSize)
-                    "hvcC" -> if (state.hvcCBox == null) state.hvcCBox = parseHvcCPayload(raf, boxDataStart, boxPayloadSize)
-                    "avcC" -> if (state.avcCBox == null) state.avcCBox = parseAvcCPayload(raf, boxDataStart, boxPayloadSize)
-                    "tkhd" -> parseTkhdPayload(raf, boxDataStart, boxPayloadSize)?.let { state.trackHeaders.add(it) }
+                    "ftyp" -> if (state.ftypBox == null) state.ftypBox = parseFtypPayload(source, boxDataStart, boxPayloadSize)
+                    "colr" -> if (state.colrBox == null) state.colrBox = parseColrPayload(source, boxDataStart, boxPayloadSize)
+                    "mdcv" -> if (state.mdcvBox == null) state.mdcvBox = parseMdcvPayload(source, boxDataStart, boxPayloadSize)
+                    "clli" -> if (state.clliBox == null) state.clliBox = parseClliPayload(source, boxDataStart, boxPayloadSize)
+                    "hvcC" -> if (state.hvcCBox == null) state.hvcCBox = parseHvcCPayload(source, boxDataStart, boxPayloadSize)
+                    "avcC" -> if (state.avcCBox == null) state.avcCBox = parseAvcCPayload(source, boxDataStart, boxPayloadSize)
+                    "tkhd" -> parseTkhdPayload(source, boxDataStart, boxPayloadSize)?.let { state.trackHeaders.add(it) }
                 }
             }
 
@@ -330,7 +361,7 @@ object Mp4MetadataParser {
     }
 
     private fun parseStsdEntries(
-        raf: RandomAccessFile,
+        source: SeekableDataSource,
         startOffset: Long,
         endOffset: Long,
         state: BoxParseState,
@@ -341,8 +372,8 @@ object Mp4MetadataParser {
         val header = ByteArray(8)
 
         while (pos + 8 <= endOffset) {
-            raf.seek(pos)
-            val read = raf.read(header)
+            source.seek(pos)
+            val read = source.read(header)
             if (read < 8) break
 
             val size = ((header[0].toLong() and 0xFF) shl 24) or
@@ -364,12 +395,12 @@ object Mp4MetadataParser {
                 // VisualSampleEntry has 78 bytes of fixed fields after 8-byte box header = 86 bytes
                 val childStart = pos + 86L
                 if (childStart < entryEnd && depth < MAX_RECURSION_DEPTH) {
-                    entryChildren = parseBoxTree(raf, childStart, entryEnd, state, depth + 1)
+                    entryChildren = parseBoxTree(source, childStart, entryEnd, state, depth + 1)
                 }
             } else if (format == "mp4a") {
                 val childStart = pos + 36L
                 if (childStart < entryEnd && depth < MAX_RECURSION_DEPTH) {
-                    entryChildren = parseBoxTree(raf, childStart, entryEnd, state, depth + 1)
+                    entryChildren = parseBoxTree(source, childStart, entryEnd, state, depth + 1)
                 }
             }
 
@@ -449,12 +480,12 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseFtypPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4FtypBox? {
+    private fun parseFtypPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4FtypBox? {
         if (size < 8) return null
         val readLen = Math.min(size, 1024L).toInt()
-        raf.seek(offset)
+        source.seek(offset)
         val data = ByteArray(readLen)
-        val bytesRead = raf.read(data)
+        val bytesRead = source.read(data)
         if (bytesRead < 8) return null
 
         val majorBrand = String(data, 0, 4, Charsets.US_ASCII)
@@ -474,16 +505,16 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseColrPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4ColrBox? {
+    private fun parseColrPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4ColrBox? {
         if (size < 4) return null
-        raf.seek(offset)
+        source.seek(offset)
         val typeBuf = ByteArray(4)
-        raf.read(typeBuf)
+        source.read(typeBuf)
         val colorType = String(typeBuf, Charsets.US_ASCII)
 
         if (colorType == "nclx" && size >= 11) {
             val data = ByteArray(7)
-            raf.read(data)
+            source.read(data)
             val buf = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
             val primaries = buf.short.toInt() and 0xFFFF
             val transfer = buf.short.toInt() and 0xFFFF
@@ -508,11 +539,11 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseMdcvPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4MdcvBox? {
+    private fun parseMdcvPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4MdcvBox? {
         if (size < 24) return null
-        raf.seek(offset)
+        source.seek(offset)
         val data = ByteArray(24)
-        raf.read(data)
+        source.read(data)
         val buf = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
 
         return Mp4MdcvBox(
@@ -529,11 +560,11 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseClliPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4ClliBox? {
+    private fun parseClliPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4ClliBox? {
         if (size < 4) return null
-        raf.seek(offset)
+        source.seek(offset)
         val data = ByteArray(4)
-        raf.read(data)
+        source.read(data)
         val buf = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
 
         return Mp4ClliBox(
@@ -542,11 +573,11 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseHvcCPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4HvcCBox? {
+    private fun parseHvcCPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4HvcCBox? {
         if (size < 23) return null
-        raf.seek(offset)
+        source.seek(offset)
         val header = ByteArray(23)
-        raf.read(header)
+        source.read(header)
 
         val version = header[0].toInt() and 0xFF
         val b1 = header[1].toInt() and 0xFF
@@ -564,18 +595,18 @@ object Mp4MetadataParser {
         val nalUnits = mutableListOf<ByteArray>()
         for (a in 0 until numArrays) {
             val arrHeader = ByteArray(3)
-            val read = raf.read(arrHeader)
+            val read = source.read(arrHeader)
             if (read < 3) break
             val numNalus = ((arrHeader[1].toInt() and 0xFF) shl 8) or (arrHeader[2].toInt() and 0xFF)
 
             for (n in 0 until numNalus) {
                 val lenBytes = ByteArray(2)
-                val lenRead = raf.read(lenBytes)
+                val lenRead = source.read(lenBytes)
                 if (lenRead < 2) break
                 val nalLen = ((lenBytes[0].toInt() and 0xFF) shl 8) or (lenBytes[1].toInt() and 0xFF)
                 if (nalLen > 0) {
                     val nal = ByteArray(nalLen)
-                    raf.read(nal)
+                    source.read(nal)
                     nalUnits.add(nal)
                 }
             }
@@ -594,12 +625,12 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseAvcCPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4AvcCBox? {
+    private fun parseAvcCPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4AvcCBox? {
         if (size < 7) return null
         val readLen = Math.min(size, 65536L).toInt()
-        raf.seek(offset)
+        source.seek(offset)
         val data = ByteArray(readLen)
-        val bytesRead = raf.read(data)
+        val bytesRead = source.read(data)
         if (bytesRead < 7) return null
 
         val version = data[0].toInt() and 0xFF
@@ -645,12 +676,12 @@ object Mp4MetadataParser {
         )
     }
 
-    private fun parseTkhdPayload(raf: RandomAccessFile, offset: Long, size: Long): Mp4TrackHeader? {
+    private fun parseTkhdPayload(source: SeekableDataSource, offset: Long, size: Long): Mp4TrackHeader? {
         if (size < 84) return null
         val readLen = Math.min(size, 120L).toInt()
-        raf.seek(offset)
+        source.seek(offset)
         val data = ByteArray(readLen)
-        val bytesRead = raf.read(data)
+        val bytesRead = source.read(data)
         if (bytesRead < 84) return null
 
         val version = data[0].toInt() and 0xFF
