@@ -1,5 +1,5 @@
 # UNIDOWNCO MASTER PRODUCT & TECHNICAL ROADMAP
-## Architecture, Hardware Strategy, Phased Implementation & Verification Plan
+## Revision 1.1: Architecture, Hardware Strategy, 12-Phase Implementation & Verification Governance
 
 **Project:** UniDownco  
 **Application ID (Release):** `com.unidownco`  
@@ -8,10 +8,19 @@
 **Workspace:** `D:\Webapp\UniDownco`  
 **Repository:** `https://github.com/arybishal/UniDownco`  
 **Base Branch:** `master`  
-**Document Status:** MASTER ROADMAP (PLANNING ONLY — STRICTLY ZERO CODE MODIFICATIONS)  
+**Document Status:** MASTER ROADMAP REVISION 1.1 (PLANNING ONLY — STRICTLY ZERO CODE MODIFICATIONS)  
 **Target Environments:**
 - **Baseline Connected Physical Device:** Xiaomi Redmi Note 25062RN2DA (Qualcomm SM6225 / bengal / Adreno 610, Android 16 / API 36)
 - **Flagship Target Platform:** OnePlus Ace 5 / OnePlus 13R class (Qualcomm Snapdragon 8 Gen 3 SM8650-AB / Adreno 750, Android 15 / API 35+)
+
+---
+
+## REVISION HISTORY
+
+| Version | Date | Author / Context | Key Changes & Additions |
+|---|---|---|---|
+| **v1.0** | Nov 16, 2026 | Initial Master Roadmap | Initial architectural baseline, 10-phase sequence, gap audit, performance budget, licensing policy, and initial hardware compatibility matrix. |
+| **v1.1** | Nov 16, 2026 | Master Roadmap Revision 1.1 | **Four Mandatory Corrections:**<br>1. **Correction A:** Added **Phase 11 (Premium UX & Background Experience)** covering background service compliance, queue priority/reordering, PiP lifecycle, accessibility, and responsive layouts.<br>2. **Correction B:** Added **Phase 12 (Final Quality, Security, Compatibility & Release Readiness)** establishing comprehensive audit areas, immutable GitHub release policies, and release readiness checklists.<br>3. **Correction C:** Substantially strengthened **HDR10 metadata and bitstream governance**, eliminating fabricated default metadata, detailing independent serialization specifications (Android `KEY_HDR_STATIC_INFO`, HEVC SEI payloads 137/144, MP4 `mdcv`/`clli` atoms), mandating independent bitstream verification, color science tests, and explicit physical device status (`MAIN10 PHYSICAL DEVICE VERIFICATION: NOT EXECUTED`).<br>4. **Correction D:** Expanded hardware capability classification into a **20-dimension capability matrix** with 10 explicit status classifications and granular device evaluations for Xiaomi SM6225 and OnePlus Snapdragon 8 Gen 3.<br>5. **Mandatory Regression Baseline:** Added comprehensive regression protection covering downloader, media processing, database, and UI suites across all phases.<br>6. **Updated Phasing:** Expanded roadmap from 10 to 12 fully articulated, approval-gated phases. |
 
 ---
 
@@ -26,15 +35,13 @@ The studio unites three core pillars:
 
 ### Fundamental Architectural Constraints
 - **Zero Hallucinated Hardware Capabilities:** No device without verified silicon capabilities will advertise or attempt genuine 10-bit HEVC Main10 encoding. Devices lacking 10-bit hardware encoders (such as the Qualcomm SM6225) are strictly gated to 8-bit Main SDR with explicit user-facing diagnostic badges.
-- **Zero Fake Metadata:** No SDR file will ever be tagged with fake HDR static metadata or labeled as HDR10.
+- **Zero Fabricated Metadata:** No arbitrary or fabricated static metadata (e.g. universal hardcoded 1000/400 nits) will ever be assigned to videos without documented source derivation or pixel measurement. No SDR file will ever be tagged with fake HDR static metadata or labeled as HDR10.
 - **Mandatory Stage 2.3.1.1 Gate:** The existing Stage 2.3.1 implementation of the 10-bit HDR pipeline is recognized as code-complete but **unverified on physical Main10 silicon**. Prior to building dependent enhancement features (such as 3D LUTs and grading presets), `STAGE 2.3.1.1` must execute physical verification, metadata byte-layout audits, and bitstream NAL unit inspection.
 - **Strict Single Source of Truth:** All user interfaces strictly adhere to [DESIGN.md](file:///D:/Webapp/UniDownco/DESIGN.md) (White Canvas, Black Structure, Yellow `#FFD429` Accent, Inter & JetBrains Mono typography).
 
 ---
 
 ## 2. CURRENT VERIFIED ARCHITECTURE & TECHNICAL BASELINE
-
-A comprehensive audit of the workspace reveals the following verified baseline:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -80,8 +87,7 @@ A comprehensive audit of the workspace reveals the following verified baseline:
 
 ### 1. Build & Runtime Environment
 - **JDK:** Java 17 (Zulu 17.0.12)
-- **Android Gradle Plugin:** 8.7.2
-- **Gradle Wrapper:** 8.10.2
+- **Android Gradle Plugin:** 8.7.2 | **Gradle Wrapper:** 8.10.2
 - **Kotlin:** 2.0.21 (Compose Compiler Plugin integrated)
 - **Compile SDK:** 35 | **Target SDK:** 35 | **Min SDK:** 26 (Android 8.0 Oreo)
 - **Package Identifiers:**
@@ -152,121 +158,199 @@ A comprehensive audit of the workspace reveals the following verified baseline:
 | **HDR10+ Dynamic Metadata (Phase D7)**| **Not Implemented** | Requires SMPTE ST 2094-40 dynamic tone mapping SEI generation. |
 | **Dolby Vision Authoring (Phase D8)** | **Blocked / Excluded** | Proprietary Dolby licensing and encoder SDK preclude open authoring. |
 | **AI Motion Interpolation (60 FPS)** | **Blocked / Research** | Real-time optical flow on mobile SoC requires dedicated NPU pipeline. |
+| **Premium UX & Background Exp (Phase 11)**| **Partially Implemented** | Service exists; lacks queue reordering, PiP, and advanced controls. |
+| **Release Readiness Governance (Phase 12)**| **Not Implemented** | Requires formal release audit, immutable tag policy, and signoff. |
 
 ---
 
-## 4. MANDATORY STAGE 2.3.1.1: HDR10 METADATA CORRECTION & END-TO-END BITSTREAM VERIFICATION
+## 4. HDR10 METADATA AND BITSTREAM GOVERNANCE (CORRECTION C)
 
-Before any Stage 2.3.2 feature (Color Grading, LUTs, Grain) is developed, **Stage 2.3.1.1 is mandatory** to resolve the 5 outstanding technical concerns.
+To eliminate any ambiguity between metadata domains, the roadmap strictly differentiates five independent representations:
+1. **Mastering Display Colour Volume (MDCV):** The physical optical properties (chromaticity primaries, white point, minimum and maximum luminance) of the reference monitor on which the video was mastered.
+2. **Content Light Level (CLL):** The statistical light levels of the actual video essence, specifically Maximum Content Light Level ($\text{MaxCLL}$) and Maximum Frame-Average Light Level ($\text{MaxFALL}$).
+3. **HEVC Bitstream SEI Representation:** In-band Supplemental Enhancement Information (SEI) NAL units multiplexed directly into the elementary video stream (`nal_unit_type = 39`, `PREFIX_SEI_NUT`).
+4. **MP4 Container Metadata Atoms:** ISO Base Media File Format (ISOBMFF) box structures placed inside the video sample description box (`stsd` / `hev1` / `hvc1`).
+5. **Android MediaCodec Metadata Buffer:** The in-memory 25-byte Little-Endian binary byte array delivered to Android's `MediaFormat.KEY_HDR_STATIC_INFO`.
 
 ```
-                    STAGE 2.3.1.1 VERIFICATION WORKFLOW
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. Dynamic Content Light Level Analysis (Replace Hardcoded 1000/400)        │
-│    - Compute real MaxCLL (maximum pixel value) during decoder pass          │
-│    - Compute real MaxFALL (frame average luminance) over all frames         │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│ 2. Binary Layout & Container Atom Alignment                                 │
-│    - Verify CTA-861.3 25-byte Little-Endian buffer structure                │
-│    - Verify MP4 'mdcv' (Mastering Display) atom byte order (Big-Endian)     │
-│    - Verify MP4 'clli' (Content Light Level) atom byte order (Big-Endian)    │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│ 3. Bitstream SEI NAL Unit Inspection                                        │
-│    - Inspect HEVC SPS: profile_idc == 2 (Main10), bit_depth_luma == 10      │
-│    - Inspect Prefix SEI payloadType 137 (Mastering Display Colour Volume)   │
-│    - Inspect Prefix SEI payloadType 144 (Content Light Level Info)          │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│ 4. Adreno EGL 10-Bit Surface Delivery Proof                                 │
-│    - Verify EGL_RECORDABLE_ANDROID + RGBA_1010102 delivers unclipped data  │
-│    - Confirm absence of 8-bit intermediate downsampling in SurfaceFlinger   │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│ 5. Physical Silicon Execution on Main10 Hardware (SM8650 Target)            │
-│    - Execute full transcode on Snapdragon 8 Gen 3 hardware                  │
-│    - Independent bitstream validation via MediaExtractor and FFprobe        │
+│                       METADATA REPRESENTATION DOMAINS                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. Android MediaCodec:   KEY_HDR_STATIC_INFO (25-byte Little-Endian CTA-861)│
+│ 2. HEVC Elementary SEI:  Payload 137 (MDCV) & Payload 144 (CLLI)            │
+│ 3. MP4 Container Atoms:  'mdcv' Box (24 bytes) & 'clli' Box (4 bytes)       │
+│ 4. MP4 Colour Info:      'colr' Box ('nclx' tuple: primaries, transfer, mtx)│
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Specific Technical Tasks for Stage 2.3.1.1
-1. **Dynamic Content Light Level Computation:**
-   - In `VideoProcessingEngine`, replace static `HdrStaticMetadata.BT2020_1000NITS` with a two-pass or real-time analyzer that computes:
-     - $\text{MaxCLL} = \max_{x,y,t}(L(x,y,t))$
-     - $\text{MaxFALL} = \frac{1}{T}\sum_{t=1}^T \left(\frac{1}{N}\sum_{x,y} L(x,y,t)\right)$
-   - If single-pass real-time encoding is used, calibrate metadata against the known mathematical limits of the BT.2408 expansion curve ($1,000\text{ nits peak}$, $203\text{ nits diffuse}$) and inject measured source statistics.
-2. **Container Atom & SEI NAL Verification:**
-   - Create a bitstream parser verifying that:
-     - The output MP4 file contains the `colr` atom with `colour_type = 'nclx'`, `colour_primaries = 9` (BT.2020), `transfer_characteristics = 16` (SMPTE ST 2084), `matrix_coefficients = 9` (BT.2020 non-constant luminance), and `full_range_flag = 0`.
-     - The MP4 contains valid `mdcv` and `clli` box structures.
-     - The HEVC elementary stream contains valid SEI NAL units (`nal_unit_type = 39` for `PREFIX_SEI_NUT`).
-3. **Hardware Execution Requirement:**
-   - Until a physical device with HEVC Main10 hardware encoding is connected and verified, the status must remain strictly marked: `UNVERIFIED ON PHYSICAL MAIN10 HARDWARE`.
+### 4.1 Strict Policy: Elimination of Fabricated Metadata
+- **Forbidden Practice:** No implementation will universally hardcode static $\text{MaxCLL} = 1000\text{ nits}$ or $\text{MaxFALL} = 400\text{ nits}$ across arbitrary source media.
+- **Four Metadata Classifications:**
+  1. **Measured Metadata:** Explicitly calculated across all decoded frames by evaluating pixel luminances in the linear domain:
+     $$\text{MaxCLL} = \max_{x,y,t} \left(Y_{\text{nits}}(x,y,t)\right)$$
+     $$\text{MaxFALL} = \frac{1}{T}\sum_{t=1}^T \left(\frac{1}{W \cdot H}\sum_{x,y} Y_{\text{nits}}(x,y,t)\right)$$
+  2. **Source-Declared Metadata:** Preserved directly from parsed source stream SEI NAL units or source container atoms without modification (`HDR10_PRESERVE` mode).
+  3. **Mathematically Estimated Metadata:** For real-time SDR-to-HDR10 expansion where full two-pass pre-measurement is computationally prohibitive, metadata must be bounded strictly by the analytical mathematical limits of the applied inverse tone mapping curve (e.g. BT.2408 expansion capped at $1,000\text{ nits}$, diffuse white at $203\text{ nits}$, and estimated scene average).
+  4. **Unavailable Metadata:** When content light levels cannot be measured, declared, or mathematically guaranteed.
+- **Standards-Compliant Fallback Policy:** When $\text{MaxCLL}$ and $\text{MaxFALL}$ are unavailable, the application must omit the Content Light Level SEI (payload 144) and the MP4 `clli` atom entirely, or signal them as $0$ (indicating unknown content light levels per CTA-861.3 and ITU-T H.265 Annex D).
+
+### 4.2 Independent Serialization & Representation Specifications
+
+Every representation emitted by UniDownco has distinct field ordering, units, and endianness:
+
+| Domain | Specification | Layout & Byte Order | Units / Scaling |
+|---|---|---|---|
+| **Android `KEY_HDR_STATIC_INFO`** | CTA-861.3 / CTA-861-G Type 1 | 25 Bytes, **Little-Endian**<br>Byte 0: ID (0x00)<br>Bytes 1-12: Primaries (G, B, R)<br>Bytes 13-16: White Point D65<br>Bytes 17-18: Max Mastering Lum<br>Bytes 19-20: Min Mastering Lum<br>Bytes 21-22: MaxCLL<br>Bytes 23-24: MaxFALL | Primaries/White: $0.00002$ ($50,000$)<br>Max Lum: $1\text{ cd/m}^2$<br>Min Lum: $0.0001\text{ cd/m}^2$<br>MaxCLL: $1\text{ cd/m}^2$<br>MaxFALL: $1\text{ cd/m}^2$ |
+| **HEVC MDCV SEI (Payload 137)** | ITU-T H.265 D.2.27 | Elementary Stream NAL, **Big-Endian**<br>Order: $c=0$ (Green), $c=1$ (Blue), $c=2$ (Red) | Primaries/White: $0.00002$ ($50,000$)<br>**Max Lum: $0.0001\text{ cd/m}^2$ (32-bit uint)**<br>Min Lum: $0.0001\text{ cd/m}^2$ (32-bit uint) |
+| **HEVC CLLI SEI (Payload 144)** | ITU-T H.265 D.2.35 | Elementary Stream NAL, **Big-Endian**<br>16-bit uint `max_content_light_level`<br>16-bit uint `max_pic_average_light_level` | MaxCLL: $1\text{ cd/m}^2$<br>MaxFALL: $1\text{ cd/m}^2$ |
+| **MP4 Container `mdcv` Atom** | ISO/IEC 14496-12 / 23008-12 | ISOBMFF Box, **Big-Endian** (24 data bytes)<br>Order: Green(x,y), Blue(x,y), Red(x,y), White(x,y), MaxLum (32-bit), MinLum (32-bit) | Primaries/White: $0.00002$ ($50,000$)<br>**Max Lum: $0.0001\text{ cd/m}^2$ (32-bit)**<br>Min Lum: $0.0001\text{ cd/m}^2$ (32-bit) |
+| **MP4 Container `clli` Atom** | ISO/IEC 14496-12 / 23008-12 | ISOBMFF Box, **Big-Endian** (4 data bytes)<br>16-bit uint `max_content_light_level`<br>16-bit uint `max_pic_average_light_level` | MaxCLL: $1\text{ cd/m}^2$<br>MaxFALL: $1\text{ cd/m}^2$ |
+
+*Critical Difference Highlight:* In CTA-861.3 (`KEY_HDR_STATIC_INFO`), Max Mastering Luminance is a 16-bit integer in units of $1\text{ cd/m}^2$. In HEVC SEI payload 137 and the MP4 `mdcv` atom, Max Mastering Luminance is a 32-bit integer in units of $0.0001\text{ cd/m}^2$ ($10,000\times$ difference). These representations are not interchangeable.
+
+### 4.3 HEVC Bitstream Verification Requirements
+Phase 1 must require automated and independent verification of the final output file:
+- **HEVC Sequence Parameter Set (SPS):**
+  - `profile_tier_level`: `general_profile_idc == 2` (HEVC Profile Main10).
+  - `bit_depth_luma_minus8 == 2` (10-bit luma depth).
+  - `bit_depth_chroma_minus8 == 2` (10-bit chroma depth).
+- **VUI Parameters inside SPS:**
+  - `colour_description_present_flag == 1`.
+  - `colour_primaries == 9` (ITU-R BT.2020).
+  - `transfer_characteristics == 16` (SMPTE ST 2084 / PQ).
+  - `matrix_coeffs == 9` (ITU-R BT.2020 non-constant luminance).
+  - `video_full_range_flag == 0` (Studio/Limited video range $[64, 940]$ for 10-bit).
+- **Supplemental Enhancement Information (SEI):**
+  - Presence of `PREFIX_SEI_NUT` (`nal_unit_type = 39`).
+  - Validation of payloadType 137 (Mastering Display Colour Volume).
+  - Validation of payloadType 144 (Content Light Level Info) when applicable.
+- **Independent Tool Requirement:** Verification must use an independent tool (such as FFprobe 4.4+ or a custom bitstream parser written in Kotlin) that inspects raw NAL bytes rather than trusting MediaCodec configuration return codes.
+
+### 4.4 Color-Science & Shader Validation
+The mathematical pipeline must undergo independent unit and shader validation against analytical test vectors:
+- **BT.709 Linearization:** Tolerance $\epsilon < 10^{-6}$ across normalized domain $[0.0, 1.0]$.
+- **Rec.709 to Rec.2020 Matrix Transform:** Verification that D65 white $(1, 1, 1)$ maps exactly to $(1, 1, 1)$ without chromaticity drift.
+- **BT.2408 Inverse Tone Mapping:**
+  - Anchor point verification: SDR reference white ($100\text{ nits}$) expands to HDR diffuse white ($203\text{ nits}$).
+  - Specular highlight verification: Peak code value expands smoothly to $1,000\text{ nits}$ without slope discontinuity or highlight inversion.
+- **SMPTE ST 2084 PQ Encoding:**
+  - Analytical round-trip test: $\text{DecodePQ}(\text{EncodePQ}(L)) \equiv L$ with relative error $< 0.01\%$.
+  - Anchor values: $0\text{ nits} \rightarrow 0.0$; $203\text{ nits} \rightarrow \approx 0.5807$; $1,000\text{ nits} \rightarrow \approx 0.7518$; $10,000\text{ nits} \rightarrow 1.0$.
+- **Quantization & Dithering:** Verification that 10-bit quantization $[0, 1023]$ does not introduce false contouring or banding; evaluation of blue-noise or spatial triangular dithering where necessary.
+- **GLSL Precision:** Shaders must explicitly declare `precision highp float;` and verify that the target GPU driver supports genuine IEEE 754 32-bit floating point.
+
+### 4.5 Physical Device Status Statement
+- **Xiaomi Redmi Note 25062RN2DA (SM6225):** Hardware encoder `c2.qti.hevc.encoder` strictly lacks `HEVCProfileMain10`. It is verified for 8-bit Main SDR only.
+- **OnePlus Snapdragon 8 Gen 3 Target:** Architecturally ready but physically unconnected.
+- **Formal Status Statement:**  
+  `MAIN10 PHYSICAL DEVICE VERIFICATION: NOT EXECUTED (Compatible 10-bit hardware not physically connected).`
 
 ---
 
-## 5. COMPLETE FEATURE INVENTORY ACROSS PHASES
+## 5. EXPANDED HARDWARE CAPABILITY CLASSIFICATION MATRIX (CORRECTION D)
 
-### Phase A: Advanced Downloader Studio
-- **A1. Batch Downloads:** Multi-URL text input dialog, clipboard URL parser, duplicate filtering, aggregate queue progress notification, per-item status cards, bulk cancel/pause.
-- **A2. Playlist Downloads:** YouTube playlist metadata parser (`--flat-playlist`), individual track selection modal, sequential enqueueing, resilient handling of private/deleted entries.
-- **A3. Download Scheduling:** `WorkManager` background scheduler, exact/windowed start time, Wi-Fi-only restriction, charging-only restriction, battery optimization exemption handling.
-- **A4. Intelligent Error Classifier & Recovery:** Distinct failure categorization (`NETWORK_TIMEOUT`, `HTTP_429_RATE_LIMITED`, `AUTHENTICATION_REQUIRED`, `STORAGE_INSUFFICIENT`, `PARSER_DEPRECATED`), exponential backoff with jitter ($2^n \cdot 1000\text{ms}$), permanent error non-retry gating.
-- **A5. Granular Format & Quality Selection:** Pre-download stream probe dialog displaying available resolutions (4K, 1440p, 1080p, 720p, 480p, 360p), container formats (MP4, WebM), audio bitrates (128k, 256k, 320k), codecs (HEVC, AVC, VP9, AV1), and estimated file sizes.
-- **A6. Subtitle Management:** Multi-language subtitle discovery (`yt-dlp --list-subs`), manual vs automatic caption distinction, `.vtt` to `.srt` conversion, standalone file export, optional soft subtitle track muxing into MP4.
-- **A7. Secure Session Management:** Encrypted credential/cookie vault backed by `AndroidKeyStore` (`AES-256-GCM`), masked user inputs, strict zero-logging policy, exclusion from Android Auto Backup.
-- **A8. Multi-Platform Reliability:** Dedicated routing for Instagram Reels, YouTube DASH, Facebook HD, TikTok watermark-free streams, Reddit v.redd.it audio pairing, and Twitter/X syndication variants.
+The roadmap replaces all general compatibility labels with a **20-dimension capability matrix** evaluated across five discovery levels:
+1. **Theoretical API / Silicon Capability:** Documented chipset specification or Android CDD requirement.
+2. **Runtime-Discovered Capability:** Interrogated dynamically via `MediaCodecList`, `EGL14`, and `GLES30`.
+3. **Implemented Capability:** Feature code written and integrated into the UniDownco codebase.
+4. **Automated-Test Verified Capability:** Covered and passing in Robolectric host unit tests.
+5. **Physically Verified Capability:** Executed and validated on physical Android hardware via ADB instrumentation.
 
-### Phase B: Built-in Media Toolkit
-- **B1. Video Trimmer:** Interactive frame-accurate scrubber with thumbnail filmstrip, start/end marker handles, fast-path lossless stream-copy trimming (cutting on I-frames via `MediaExtractor` + `MediaMuxer`), fallback transcode trimming for sub-GOP accuracy.
-- **B2. Video Compressor:** Target file size mode (calculates required video bitrate $R_v = \frac{\text{TargetSize} - \text{AudioSize}}{\text{Duration}}$), CRF visual quality presets (Fast 720p, Balanced 1080p, Archive HEVC), real-time compression ratio display.
-- **B3. Audio Extractor:** Lossless stream extraction (demuxing AAC/Opus into `.m4a` / `.opus`), transcode extraction to MP3 / FLAC via in-app engine, ID3/Vorbis metadata tag preservation.
-- **B4. Thumbnail & Frame Extractor:** High-precision timestamp seeker using `MediaMetadataRetriever.OPTION_CLOSEST`, PNG / JPEG format export, selectable output resolution.
-- **B5. Media Format Converter:** Container remuxing (MKV $\rightarrow$ MP4, WebM $\rightarrow$ MP4) without re-encoding when streams are compatible, full transcode fallback when target container requires codec conversion.
-- **B6. Deep Media Inspector:** Technical modal displaying JetBrains Mono specs: container atoms, video codec profile/level, exact frame rate, variable frame rate (VFR) timestamps, bit depth, color primaries, transfer curve, matrix, HDR format, audio channels, sample rate, bitrates.
+### Standardized Status Classifications
+- `PHYSICALLY VERIFIED`: Executed on physical device with validated bitstream and media output.
+- `IMPLEMENTED AND TESTED`: Feature implemented in code and verified by host unit test suite.
+- `ARCHITECTURALLY READY`: Designed and implemented to standard; awaiting physical test execution.
+- `THEORETICALLY SUPPORTED`: Permitted by hardware specifications but not yet implemented or tested.
+- `NOT PHYSICALLY VERIFIED`: Code exists but hardware execution has not occurred.
+- `HARDWARE UNSUPPORTED`: Hardware silicon explicitly lacks the required encoder/decoder block.
+- `SOFTWARE FALLBACK AVAILABLE`: CPU-based fallback pipeline exists when hardware block is absent.
+- `PLANNED`: Slated for implementation in a future phase.
+- `BLOCKED`: Prevented by licensing, hardware, or external platform constraints.
+- `NOT EXECUTED`: Specific test scenario not performed due to environmental constraints.
 
-### Phase C: Smart Download Library
-- **C1. Multi-Type Organization:** Navigation tabs: All, Videos, Audio, Subtitles, Processed Studio Outputs.
-- **C2. Advanced Filtering & Multi-Sort:** Platform filters (YouTube, Instagram, etc.), resolution filters (4K, 1080p, etc.), codec filters (HEVC, AVC), HDR filters (HDR10, SDR), multi-criteria sort (Date, Size, Name, Duration).
-- **C3. Duplicate Scanner:** Fast hash comparison (SHA-256) of downloaded files, warning prompts before downloading identical media, safe deletion confirmation ensuring original file is never deleted without confirmation.
-- **C4. Storage Analytics Dashboard:** Visual disk space breakdown (UniDownco media vs total storage), temporary cache cleaner (orphaned `.part` and processing cache), largest media file highlights.
-- **C5. History Backup & Migration:** Database export to encrypted or clean JSON, historical queue restoration, cross-device migration compatibility.
-- **C6. Custom Collections:** User-created tags and playlists (e.g. "Favorites", "Travel", "Tutorials"), batch export to Android Gallery.
+### 20-Dimension Hardware Capability Matrix
 
-### Phase D: Advanced Video Enhancement
-- **D1. Frame Rate Conversion:** Configurable output frame rate targets (25, 30, 50, 60 FPS, Original). PTS retiming, drop-frame / duplicate-frame cadence generation. Explicit technical distinction between cadence conversion and optical-flow motion interpolation.
-- **D2. Cinematic Color Grading:** Shader-based real-time parameter uniforms: Exposure ($\pm 2.0\text{ EV}$), Contrast ($0.5 - 1.5$), Saturation ($0.0 - 2.0$), White Balance (Temperature / Tint), Highlights / Shadows lift/gamma/gain.
-- **D3. 3D LUT Support:** Full `.cube` parser supporting standard $17\times 17\times 17$ and $33\times 33\times 33$ 3D color lookup tables, uploaded as 3D OpenGL textures (`GL_TEXTURE_3D`) with hardware trilinear interpolation.
-- **D4. Film Grain Simulation:** High-performance parametric procedural pseudo-random grain generator in GLSL, dynamic temporal seed per frame, luminance-weighted masking (preventing grain clumping in deep blacks and blown-out highlights).
-- **D5. Text & Logo Overlays:** 2D alpha texture compositor, custom text rendering (typography, scale, color, opacity), logo PNG watermark positioning (Top-Left, Top-Right, Bottom-Left, Bottom-Right, Center), time-bounded display windows ($t_{start} \rightarrow t_{end}$).
-- **D6. Genuine HDR10 Implementation:** End-to-end 10-bit pipeline, Stage 2.3.1.1 verification, verified BT.2020 primaries, ST 2084 transfer curve, and valid CTA-861.3 static metadata.
-- **D7. HDR10+ Evaluation:** Dynamic metadata investigation (SMPTE ST 2094-40). Evaluation of Android 13+ `KEY_HDR10_PLUS_INFO` support.
-- **D8. Dolby Vision Evaluation:** Documenting proprietary profile boundaries (Profile 5 proprietary IPTPQc2, Profile 8.4 cross-compatibility). Explicitly gating authoring as excluded.
-- **D9. Fused Multi-Stage GPU Pipeline:** Dynamic shader stage builder chaining active operations into minimal render passes:
-  $$\text{Decode} \rightarrow \text{Linearize} \rightarrow \text{Gamut Transform} \rightarrow \text{Color Grade} \rightarrow \text{3D LUT} \rightarrow \text{Tone Map / PQ} \rightarrow \text{Grain} \rightarrow \text{Watermark} \rightarrow \text{Encode}$$
-
-### Phase E: Premium User Experience
-- **E1. Picture-in-Picture (PiP) Player:** Native Android PiP mode for downloaded video playback.
-- **E2. Background Processing Controls:** Notification controls allowing users to pause, resume, or throttle video processing jobs.
-- **E3. Queue Management & Reordering:** Drag-and-drop queue reordering, priority promotion.
-- **E4. Battery & Network Controls:** Global toggles for Wi-Fi-only downloads, charging-only encoding.
-- **E5. Custom Storage Directory:** User-selected download destination via Storage Access Framework (SAF) tree URI.
-- **E6. Accessibility & Localization:** 100% TalkBack content descriptions, dynamic type scale support, high-contrast dark theme mode.
+| Dimension # | Hardware Dimension | Xiaomi Redmi Note (SM6225 / Adreno 610) | OnePlus Ace 5 / 13R (SM8650 / Adreno 750) | Verification & Governance Notes |
+|---|---|---|---|---|
+| **1** | Hardware Video Decoder Profiles | **PHYSICALLY VERIFIED** (AVC, HEVC Main, VP9) | **THEORETICALLY SUPPORTED** (AVC, HEVC Main10, VP9, AV1) | Probed via `MediaCodecList` |
+| **2** | Hardware Video Encoder Profiles | **PHYSICALLY VERIFIED** (HEVC Main 8-bit Profile 1) | **THEORETICALLY SUPPORTED** (HEVC Main10, AVC High, AV1) | Probed via `MediaCodecList` |
+| **3** | Software Video Decoder Profiles | **PHYSICALLY VERIFIED** (`c2.android.*` decoders) | **THEORETICALLY SUPPORTED** (`c2.android.*` decoders) | Android platform standard |
+| **4** | Software Video Encoder Profiles | **PHYSICALLY VERIFIED** (`c2.android.hevc.encoder` 8-bit) | **THEORETICALLY SUPPORTED** (8-bit / 10-bit SW) | C2 software fallback |
+| **5** | HEVC Main Profile (8-Bit) | **PHYSICALLY VERIFIED** (`c2.qti.hevc.encoder`) | **ARCHITECTURALLY READY** | Baseline for all transcode tasks |
+| **6** | HEVC Main10 Profile (10-Bit) | **HARDWARE UNSUPPORTED** (Honest gating active) | **ARCHITECTURALLY READY** (`NOT EXECUTED`) | Physical test mandatory on SM8650 |
+| **7** | Resolutions & Max Frame Rates | **PHYSICALLY VERIFIED** (1080p @ 30/60 FPS) | **THEORETICALLY SUPPORTED** (4K @ 120 FPS, 8K @ 30 FPS) | Verified in `test02_Transcode` |
+| **8** | Encoder Surface-Input Support | **PHYSICALLY VERIFIED** (`createInputSurface()`) | **THEORETICALLY SUPPORTED** (`createInputSurface()`) | Zero-copy GPU-to-codec pipeline |
+| **9** | EGL Configuration Availability | **PHYSICALLY VERIFIED** (EGL 1.4, RGBA_8888) | **THEORETICALLY SUPPORTED** (EGL 1.5, RGBA_1010102) | Driver configuration query |
+| **10**| EGL 10-Bit Precision Delivery | **NOT PHYSICALLY VERIFIED** (EGL config present, codec 8b) | **ARCHITECTURALLY READY** (`NOT EXECUTED`) | Requires bitstream depth proof |
+| **11**| OpenGL ES Version | **PHYSICALLY VERIFIED** (OpenGL ES 3.2) | **THEORETICALLY SUPPORTED** (OpenGL ES 3.2) | Verified via GL strings |
+| **12**| Fragment Shader Precision | **PHYSICALLY VERIFIED** (IEEE 754 `highp` supported) | **THEORETICALLY SUPPORTED** (Full precision `highp`) | Checked via shader compile |
+| **13**| 3D Texture Support (`GL_TEXTURE_3D`)| **PHYSICALLY VERIFIED** (Supported in GLES 3.0+) | **THEORETICALLY SUPPORTED** (Supported in GLES 3.2) | Required for `.cube` 3D LUTs |
+| **14**| Max Texture Dimensions | **PHYSICALLY VERIFIED** (4096 x 4096 on Adreno 610) | **THEORETICALLY SUPPORTED** (16384 x 16384 on Adreno 750) | Probed via `GL_MAX_TEXTURE_SIZE` |
+| **15**| MediaCodec HDR Metadata Transport | **NOT PHYSICALLY VERIFIED** (SM6225 rejects Main10) | **ARCHITECTURALLY READY** (`NOT EXECUTED`) | Passes `KEY_HDR_STATIC_INFO` |
+| **16**| Bitstream Metadata Emission | **NOT PHYSICALLY VERIFIED** (Requires Main10 silicon) | **ARCHITECTURALLY READY** (`NOT EXECUTED`) | SEI payloads 137 and 144 |
+| **17**| Audio Codec Compatibility | **PHYSICALLY VERIFIED** (AAC-LC, MP3, Opus demux) | **THEORETICALLY SUPPORTED** (AAC, Opus, FLAC, AC3) | Audio passthrough verified |
+| **18**| Thermal Behavior & Throttling | **PHYSICALLY VERIFIED** (PowerManager thermal queries) | **THEORETICALLY SUPPORTED** (Advanced thermal HAL) | Monitored in transcode loop |
+| **19**| Sustained Transcode Throughput | **PHYSICALLY VERIFIED** (45-60 FPS on 1080p HEVC) | **THEORETICALLY SUPPORTED** (180-240 FPS on 1080p HEVC) | Logged via `EncodingProgress` |
+| **20**| Output Validation Compliance | **PHYSICALLY VERIFIED** (Track count, duration, sync) | **ARCHITECTURALLY READY** | Checked by `ProcessingOutputValidator`|
 
 ---
 
-## 6. PHASED IMPLEMENTATION ROADMAP & PHASING STRATEGY
+## 6. MANDATORY REGRESSION BASELINE
 
-The implementation is structured into **10 granular, independently testable phases**. Each phase is an atomic unit requiring explicit user approval before execution.
+Before and after every implementation phase, the existing automated test suite must run and pass with **zero regressions**. Any regression immediately halts the phase.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       RECOMMENDED DEVELOPMENT SEQUENCE                      │
+│                          REGRESSION TEST BASELINE                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. Host Unit Tests (82/82 Passing):                                         │
+│    - ColorScienceTest (8 tests): Linearization, BT.2020 matrix, ITM, PQ     │
+│    - HdrPipelineValidationTest (6 tests): CTA-861 buffer, validator checks  │
+│    - Step2EncodingPipelineTest & Step2FoundationTest                        │
+│    - InstagramEngineTest (Unit tests for canonical routing)                 │
+│                                                                             │
+│ 2. Physical Device Tests (18/18 Passing on Xiaomi SM6225):                  │
+│    - InstagramDeviceTest (4 tests): Runtime init, canonical URL, extract   │
+│    - MediaCodecEncodingDeviceTest (12 tests): 8-bit transcode, audio pass,  │
+│      source SHA-256 immutability, rotation preservation, thermal query,     │
+│      cancellation cleanup, startup reconciliation, silent video handling    │
+│    - MediaStreamMuxerDeviceTest (2 tests): Remuxing & corrupted file failure│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Specific Regression Domains
+1. **Downloader Regression Suite:**
+   - URL normalization and tracking parameter stripping (`InstagramUrlResolver`).
+   - Bundled yt-dlp runtime execution and dynamic update handling (`YtDlpEngineManager`).
+   - Adaptive DASH audio/video stream pairing without re-encoding (`MediaStreamMuxer`).
+   - Resumable progressive HTTP download chunking with `.part` buffers (`DownloadEngine`).
+   - Startup reconciliation of interrupted jobs in Room database.
+2. **Media-Processing Regression Suite:**
+   - Asynchronous MediaCodec decode-to-render-to-encode frame pump.
+   - Bitstream rotation metadata preservation across 90°, 180°, and 270° orientations.
+   - Monotonic presentation timestamp (PTS) delivery via `eglPresentationTimeANDROID`.
+   - Audio elementary stream extraction and lossless muxing (`AudioTrackProcessor`).
+   - Source file SHA-256 immutability (verifying source is never modified or overwritten).
+   - Cancellation token cleanup (verifying all temporary files are purged on cancel).
+   - Thermal backpressure loop honoring `PowerManager.THERMAL_STATUS_SEVERE`.
+3. **Storage & Database Regression Suite:**
+   - Scoped storage isolation: original files in `Movies/originals/`, output in `Movies/downloads/`.
+   - Room migration integrity with cascading delete on foreign keys.
+   - MediaStore registration and gallery indexing.
+4. **UI & Theme Regression Suite:**
+   - Strict adherence to [DESIGN.md](file:///D:/Webapp/UniDownco/DESIGN.md) design tokens (`UniColors`, `UniSpacing`, `UniTypography`).
+   - Zero hardcoded colors, arbitrary padding, or non-conforming shapes.
+   - Full state handling: Loading, Empty, Error, Active Progress, and Success states.
+
+---
+
+## 7. COMPLETE 12-PHASE DEVELOPMENT ROADMAP
+
+The development sequence is organized into **12 granular, independently testable phases**. Each phase is an atomic unit requiring explicit user approval before execution.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       REVISED 12-PHASE DEVELOPMENT PLAN                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Phase 1: Stage 2.3.1.1 HDR10 Metadata Correction & Bitstream Verification   │
 │ Phase 2: Built-in Media Inspector & Deep Analysis Dialog (Phase B6)         │
@@ -274,220 +358,302 @@ The implementation is structured into **10 granular, independently testable phas
 │ Phase 4: Audio Extractor & Media Format Converter (Phases B3 & B5)          │
 │ Phase 5: Advanced Video Compressor with CRF & Target Size Controls (B2)    │
 │ Phase 6: Advanced Downloader: Batch, Playlists & Format Picker (A1, A2, A5) │
-│ Phase 7: Downloader Reliability: Scheduling, Error Classifier, Subs (A3,A4,A6)│
-│ Phase 8: Smart Library: Categories, Filtering, Storage Dashboard (C1-C6)    │
+│ Phase 7: Downloader Reliability: Scheduling, Error Classifier & Subs (A3-A7)│
+│ Phase 8: Smart Library: Categories, Filtering, Storage & Backup (C1 - C6)   │
 │ Phase 9: Video Enhancement: Cinematic Color Grading & 3D LUT (D1, D2, D3)   │
 │ Phase 10: Video Enhancement: Film Grain, Watermarks & Fused Pipeline (D4,D5)│
+│ Phase 11: Premium UX & Background Experience (Correction A)                 │
+│ Phase 12: Final Quality, Security, Compatibility & Release Readiness (Corr B│
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### PHASE 1: STAGE 2.3.1.1 HDR10 METADATA CORRECTION & BITSTREAM VERIFICATION
+### PHASE 1: STAGE 2.3.1.1 HDR10 METADATA CORRECTION & END-TO-END BITSTREAM VERIFICATION
+- **Purpose:** Eliminate unverified metadata assumptions, correct byte layouts across all 5 metadata representations, and establish automated bitstream SEI NAL verification.
 - **Scope:**
-  - Audit and fix CTA-861.3 static metadata byte layout, units, and endianness.
-  - Implement dynamic/calibrated Content Light Level computation (MaxCLL / MaxFALL) in `VideoProcessingEngine`.
-  - Validate MP4 container atoms (`colr`, `mdcv`, `clli`) and HEVC NAL units (`PREFIX_SEI_NUT` payload 137 and 144).
-  - Verify EGL 10-bit surface transfer fidelity on Adreno drivers.
-  - Formalize physical verification requirements for OnePlus Snapdragon 8 Gen 3 hardware.
-- **Out of Scope:**
-  - 3D LUTs, color grading UI, film grain, frame rate conversion.
+  - Audit and correct CTA-861.3 Little-Endian binary layout for `KEY_HDR_STATIC_INFO`.
+  - Implement dynamic Content Light Level calculation ($\text{MaxCLL}$ / $\text{MaxFALL}$) based on decoded pixel values; establish standards-compliant omission policy when unmeasured.
+  - Create bitstream NAL parser verifying HEVC SPS (`profile_idc == 2`, `bit_depth == 10`), VUI (BT.2020 / ST 2084), and Prefix SEI payloads 137 and 144.
+  - Verify MP4 container atoms (`colr`, `mdcv`, `clli`) with correct Big-Endian scaling.
+  - Verify Adreno EGL 10-bit surface transfer fidelity.
+  - Formalize physical verification requirements for Snapdragon 8 Gen 3 hardware.
+- **Explicit Exclusions:** Color grading UI, 3D LUTs, film grain, frame rate conversion.
+- **Prerequisites:** Completed Stage 2.3.1 code baseline.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/engine/hdr/HdrStaticMetadata.kt`
   - `app/src/main/java/com/unidownco/engine/processor/VideoProcessingEngine.kt`
   - `app/src/main/java/com/unidownco/engine/verifier/ProcessingOutputValidator.kt`
+  - `app/src/test/java/com/unidownco/ColorScienceTest.kt`
   - `app/src/test/java/com/unidownco/HdrPipelineValidationTest.kt`
-- **Database Impact:** None.
-- **Exit Criteria:**
-  - Unit tests verify dynamic MaxCLL/MaxFALL calculation without hardcoded values.
-  - Bitstream validator confirms `mdcv` and `clli` atoms conform to CTA-861.3 and SMPTE ST 2084.
-  - Physical Xiaomi SM6225 tests continue passing 18/18 with honest 8-bit gating.
+- **Acceptance Criteria:**
+  - No hardcoded 1000/400 metadata emitted for arbitrary inputs.
+  - Bitstream parser confirms exact SEI payload 137 and 144 syntax in generated elementary stream.
+  - Unit tests confirm MP4 atom byte layouts match ISO/IEC 14496-12 and ISO/IEC 23008-12.
+  - Xiaomi SM6225 device tests continue passing 18/18 with honest 8-bit gating.
+  - Explicit statement recorded: `MAIN10 PHYSICAL DEVICE VERIFICATION: NOT EXECUTED`.
+- **Approval Gate:** Dedicated verification report; requires explicit user approval before Phase 2.
 
 ---
 
 ### PHASE 2: BUILT-IN MEDIA INSPECTOR & TECHNICAL ANALYSIS (PHASE B6)
+- **Purpose:** Provide users and engineers with a frame-accurate, deep technical inspection tool.
 - **Scope:**
-  - Create a dedicated technical inspector component inside `feature/details`.
-  - Extract and display deep container and stream metadata: video codec profile/level, exact resolution, aspect ratio, frame rate, VFR status, bit depth, color primaries, transfer characteristics, matrix coefficients, audio sample rate, channels, and bitrate.
-  - Format all technical specs using JetBrains Mono typography in compliance with `DESIGN.md`.
-- **Out of Scope:**
-  - Editing, trimming, or transcode operations.
+  - Build deep inspection modal in `feature/details`.
+  - Extract container atoms, video codec profile/level, exact frame rate, VFR timestamps, bit depth, color primaries, transfer curve, matrix coefficients, audio sample rate, channels, bitrates.
+  - Format all technical specs using JetBrains Mono typography per `DESIGN.md`.
+- **Explicit Exclusions:** Transcoding, editing, or trimming.
+- **Prerequisites:** Phase 1 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/feature/details/VideoDetailsScreen.kt`
   - `app/src/main/java/com/unidownco/engine/analyzer/VideoAnalyzerImpl.kt`
   - `app/src/main/java/com/unidownco/core/database/VideoMetadataEntity.kt`
-- **Database Impact:** Schema version remains v3.
-- **Exit Criteria:**
-  - Verified on physical device with standard MP4, HEVC, and HDR test files.
-  - Accurate display of technical metadata without misleading approximations.
+- **Acceptance Criteria:**
+  - Accurate display of technical metadata verified against FFprobe on standard test files.
+  - Compliant with `DESIGN.md` component and typography tokens.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
 ### PHASE 3: BUILT-IN VIDEO TRIMMER & FAST STREAM-COPY ENGINE (PHASE B1)
+- **Purpose:** Enable fast, frame-accurate video trimming without quality loss when possible.
 - **Scope:**
-  - Build interactive video trimming UI with start/end markers and preview playback.
-  - Implement fast-path lossless stream-copy trimmer using `MediaExtractor` and `MediaMuxer` (cutting on keyframes/IDR frames without re-encoding).
-  - Implement fallback re-encoding trimmer using `VideoProcessingEngine` for frame-accurate sub-GOP trimming.
-  - Safe output generation in temporary directory with atomic promotion to `Movies/downloads/`.
-- **Out of Scope:**
-  - Color grading, audio extraction, batch trimming.
+  - Interactive trimming UI with thumbnail filmstrip and start/end handles.
+  - Fast-path lossless stream-copy trimmer via `MediaExtractor` + `MediaMuxer` (cutting on keyframes).
+  - Fallback frame-accurate re-encoding trimmer via `VideoProcessingEngine` for sub-GOP accuracy.
+  - Scoped storage protection with temporary `.part` buffers and atomic promotion.
+- **Explicit Exclusions:** Audio mixing, color grading, multi-clip concatenation.
+- **Prerequisites:** Phase 2 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/feature/toolkit/TrimmerScreen.kt` (New)
   - `app/src/main/java/com/unidownco/engine/toolkit/VideoTrimmerEngine.kt` (New)
   - `app/src/main/java/com/unidownco/core/design/components/FilmstripScrubber.kt` (New)
-- **Database Impact:** Add `isTrimmed` or link new entry to `downloads` table.
-- **Exit Criteria:**
+- **Acceptance Criteria:**
   - Lossless trim completes in $< 2$ seconds for a 5-minute video.
   - Frame-accurate trim maintains audio/video sync within 50ms.
   - Original source file SHA-256 remains untouched.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
 ### PHASE 4: AUDIO EXTRACTOR & MEDIA FORMAT CONVERTER (PHASES B3 & B5)
+- **Purpose:** Extract standalone audio tracks and convert media containers without re-encoding when possible.
 - **Scope:**
-  - Dedicated Audio Extraction engine: demuxes existing AAC/Opus tracks without loss into `.m4a` / `.opus`, or transcodes to MP3 using in-app FFmpeg runtime.
-  - Container Format Converter: remuxes MKV/WebM to MP4 where streams are compatible; falls back to transcode when incompatible.
-  - Clean UI entry points in `LibraryScreen` and `VideoDetailsScreen`.
-- **Out of Scope:**
-  - Audio multi-track mixing or equalization.
+  - Audio Extractor: lossless demuxing of AAC/Opus tracks into `.m4a` / `.opus`, transcode extraction to MP3 via in-app engine.
+  - Format Converter: remuxes MKV/WebM to MP4 where streams are compatible; transcode fallback when required.
+- **Explicit Exclusions:** Multi-track audio mixing or equalization.
+- **Prerequisites:** Phase 3 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/engine/toolkit/AudioExtractorEngine.kt` (New)
   - `app/src/main/java/com/unidownco/engine/toolkit/FormatConverterEngine.kt` (New)
   - `app/src/main/java/com/unidownco/feature/toolkit/AudioExtractorDialog.kt` (New)
-- **Database Impact:** Room database migration from v3 to v4 (adding `mediaType: String` to distinguish Video vs Audio).
-- **Exit Criteria:**
-  - Extracted audio plays back cleanly with verified sample rate and channel layout.
-  - Remuxed MP4 files open in standard Android Media Player without container errors.
+- **Database Impact:** Room database migration from v3 to v4 (`mediaType` column added).
+- **Acceptance Criteria:**
+  - Extracted audio plays back with correct sample rate and duration.
+  - Remuxed MP4 files open cleanly in native Android MediaPlayer.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
 ### PHASE 5: ADVANCED VIDEO COMPRESSOR (PHASE B2)
+- **Purpose:** Provide user-controlled video compression targeting specific file sizes or quality levels.
 - **Scope:**
-  - Implement compression studio UI with target file size slider and visual quality presets (Fast 720p, Balanced 1080p, High-Efficiency HEVC).
-  - Bitrate calculator computing target video bitrate based on target size and audio stream requirements.
-  - Progress reporting with real-time compression ratio display (e.g. `120 MB -> 45 MB (-62%)`).
-- **Out of Scope:**
-  - Multi-pass VBR (Android MediaCodec does not reliably support 2-pass hardware encoding on all chipsets).
+  - Compression UI with target file size slider and visual presets (Fast 720p, Balanced 1080p, Archive HEVC).
+  - Bitrate calculator: $R_v = \frac{\text{TargetSize} - \text{AudioSize}}{\text{Duration}}$.
+  - Real-time progress and compression ratio display.
+- **Explicit Exclusions:** Multi-pass VBR (hardware limitations).
+- **Prerequisites:** Phase 4 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/feature/toolkit/CompressorScreen.kt` (New)
   - `app/src/main/java/com/unidownco/engine/toolkit/VideoCompressorEngine.kt` (New)
-- **Database Impact:** Linked to `processing_jobs` table.
-- **Exit Criteria:**
+- **Acceptance Criteria:**
   - Output file size matches target within $\pm 10\%$.
-  - Output quality verified without severe macroblocking or audio desync.
+  - Audio and video synchronization preserved.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
 ### PHASE 6: ADVANCED DOWNLOADER: BATCH, PLAYLISTS & FORMAT PICKER (PHASES A1, A2, A5)
+- **Purpose:** Expand downloader capabilities to multi-URL inputs, YouTube playlists, and pre-download stream inspection.
 - **Scope:**
-  - Batch URL input: text area supporting multi-line paste, clipboard auto-detection, duplicate stripping.
-  - Playlist parsing: YouTube playlist detection, individual entry selection modal, bulk enqueueing.
-  - Pre-download format inspection bottom sheet: resolution, codec, audio bitrate, estimated file size.
-- **Out of Scope:**
-  - Scheduled downloads (Phase 7), credential vault (Phase 7).
+  - Batch URL input text area with auto-paste and duplicate detection.
+  - Playlist parser supporting selective item checkmarks and bulk enqueueing.
+  - Pre-download format inspection bottom sheet displaying resolution, codec, audio bitrate, and estimated size.
+- **Explicit Exclusions:** Scheduled downloads (Phase 7), credential vault (Phase 7).
+- **Prerequisites:** Phase 5 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/feature/home/BatchDownloadDialog.kt` (New)
   - `app/src/main/java/com/unidownco/feature/home/PlaylistSelectionDialog.kt` (New)
   - `app/src/main/java/com/unidownco/data/extractor/PlaylistExtractor.kt` (New)
   - `app/src/main/java/com/unidownco/data/repository/DownloadRepository.kt`
-- **Database Impact:** Add `batchId: String?` and `playlistId: String?` to `DownloadEntity`.
-- **Exit Criteria:**
-  - 10-item batch queue enqueues and downloads reliably without memory exhaustion.
-  - 50-item YouTube playlist loads, allows selective checkmarks, and enqueues selected items.
+- **Database Impact:** Add `batchId` and `playlistId` columns to `downloads`.
+- **Acceptance Criteria:**
+  - 10-item batch enqueues and downloads reliably without memory leaks.
+  - 50-item YouTube playlist parses and allows selective download.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
-### PHASE 7: DOWNLOADER RELIABILITY: SCHEDULING, ERROR CLASSIFIER & SUBTITLES (PHASES A3, A4, A6, A7)
+### PHASE 7: DOWNLOADER RELIABILITY: SCHEDULING, ERROR CLASSIFIER, SUBTITLES & SECURE SESSIONS (PHASES A3, A4, A6, A7)
+- **Purpose:** Maximize download resilience under adverse network, rate-limited, and authenticated conditions.
 - **Scope:**
-  - `WorkManager` download scheduling: time of day, Wi-Fi-only, Charging-only constraints.
-  - Intelligent Error Classifier: distinct handling of HTTP 429 (rate limit backoff), HTTP 403 (cookie expired), network drops.
-  - Subtitle discovery, download, and optional MP4 soft-muxing.
-  - Android Keystore session vault for authenticated downloads.
-- **Out of Scope:**
-  - CAPTCHA bypass or rate-limit evasion (strictly disallowed).
+  - `WorkManager` scheduler: Wi-Fi-only, Charging-only, and scheduled start times.
+  - Error Classifier: distinct handling for HTTP 429 (rate limit exponential backoff), HTTP 403 (expired auth), and network drops.
+  - Subtitle discovery (`yt-dlp --list-subs`), download, and optional MP4 soft-muxing.
+  - Android Keystore session vault (`AES-256-GCM`) for encrypted cookie/credential storage.
+- **Explicit Exclusions:** CAPTCHA bypass, rate-limit evasion, proxy rotation (strictly forbidden).
+- **Prerequisites:** Phase 6 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/core/network/DownloadSchedulerWorker.kt` (New)
   - `app/src/main/java/com/unidownco/core/common/ErrorClassifier.kt` (New)
   - `app/src/main/java/com/unidownco/engine/subtitles/SubtitleManager.kt` (New)
   - `app/src/main/java/com/unidownco/core/security/SessionVault.kt` (New)
-- **Database Impact:** Add scheduling fields to `DownloadEntity`.
-- **Exit Criteria:**
-  - Scheduled download fires accurately when Wi-Fi and charging conditions are met.
-  - Rate-limited downloads back off without crashing or entering infinite loops.
-  - Subtitle files download with valid UTF-8 timestamps.
+- **Acceptance Criteria:**
+  - Scheduled download respects Wi-Fi and charging constraints.
+  - HTTP 429 triggers exponential backoff without crashing.
+  - Keystore secrets are excluded from Android Auto Backup.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
-### PHASE 8: SMART LIBRARY: CATEGORIES, FILTERING & STORAGE DASHBOARD (PHASES C1 - C6)
+### PHASE 8: SMART LIBRARY: CATEGORIES, FILTERING, STORAGE DASHBOARD, DUPLICATE DETECTION & BACKUP (PHASES C1 - C6)
+- **Purpose:** Deliver a comprehensive media management experience with storage intelligence.
 - **Scope:**
-  - Library categorization tabs (All, Videos, Audio, Subtitles, Processed).
-  - Search and multi-filter drawer (Date, Platform, Resolution, Codec, HDR).
-  - Storage analytics dashboard: disk usage visualizer, orphaned file cleanup.
-  - History backup and restore (JSON export/import).
-  - Custom Collections and tagging.
-- **Out of Scope:**
-  - Cloud backup or remote synchronization.
+  - Categorization tabs: All, Videos, Audio, Subtitles, Processed.
+  - Multi-tag search and filter drawer (Platform, Resolution, Codec, HDR, Date).
+  - SHA-256 duplicate scanner with safe deletion confirmation.
+  - Storage analytics dashboard with visual breakdown and temporary file cleanup.
+  - JSON database backup export and restoration.
+  - Custom user collections and playlists.
+- **Explicit Exclusions:** Remote cloud synchronization.
+- **Prerequisites:** Phase 7 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/feature/library/LibraryScreen.kt`
   - `app/src/main/java/com/unidownco/feature/library/LibraryViewModel.kt`
   - `app/src/main/java/com/unidownco/feature/library/StorageDashboardScreen.kt` (New)
   - `app/src/main/java/com/unidownco/data/repository/BackupRepository.kt` (New)
-- **Database Impact:** Room database migration adding `collections` table and `collection_items` cross-reference table.
-- **Exit Criteria:**
-  - Filtering 500+ library items operates smoothly at 60 FPS.
-  - Storage cleanup safely deletes orphaned `.part` files without touching active downloads.
-  - Backup JSON export and restore produces an exact database replica.
+- **Database Impact:** Room database migration adding `collections` and `collection_items` tables.
+- **Acceptance Criteria:**
+  - 500+ library items filter smoothly at 60 FPS.
+  - Orphan cleanup removes dangling `.part` files safely.
+  - Backup JSON export and restore produces identical database state.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
-### PHASE 9: VIDEO ENHANCEMENT: CINEMATIC COLOR GRADING & 3D LUT (PHASES D1, D2, D3)
+### PHASE 9: VIDEO ENHANCEMENT: CINEMATIC COLOR GRADING & 3D LUT INTEGRATION (PHASES D1, D2, D3)
+- **Purpose:** Introduce studio-grade color adjustment and 3D lookup table rendering.
 - **Scope:**
   - Frame rate cadence conversion (25, 30, 50, 60 FPS, Original).
-  - Cinematic Color Grading shader: Exposure, Contrast, Saturation, Temperature, Tint, Highlights/Shadows.
-  - 3D LUT parser for standard `.cube` files (17x17x17 and 33x33x33).
-  - Upload LUT as `GL_TEXTURE_3D` and apply via trilinear sampling in fragment shader.
+  - Cinematic Color Grading fragment shader: Exposure, Contrast, Saturation, Temperature, Tint, Highlights/Shadows.
+  - Standard `.cube` 3D LUT parser (17x17x17 and 33x33x33), uploaded as `GL_TEXTURE_3D` with trilinear filtering.
   - Real-time preview composable before transcode commitment.
-- **Out of Scope:**
-  - Optical-flow motion interpolation (Phase 10 / Step 2.4).
+- **Explicit Exclusions:** Optical-flow AI motion interpolation (research only).
+- **Prerequisites:** Phase 1 and Phase 8 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/engine/hdr/gpu/CinematicColorShader.kt` (New)
   - `app/src/main/java/com/unidownco/engine/lut/CubeLutParser.kt` (New)
   - `app/src/main/java/com/unidownco/feature/enhancement/ColorGradingScreen.kt` (New)
   - `app/src/main/java/com/unidownco/engine/hdr/gpu/HdrRenderCore.kt`
-- **Database Impact:** Add color grading and LUT parameters to `ProcessingJobEntity`.
-- **Exit Criteria:**
-  - `.cube` LUT renders accurately without color banding or distortion.
-  - Color grading shader runs in $< 5\text{ms}$ per 1080p frame on Adreno 610.
-  - Output HEVC bitstream validates cleanly.
+- **Database Impact:** Add color grading and LUT parameters to `processing_jobs`.
+- **Acceptance Criteria:**
+  - `.cube` LUT renders accurately without banding or hue shift.
+  - Color grading shader executes in $< 5\text{ms}$ per 1080p frame on Adreno 610.
+  - Output HEVC bitstream conforms to standard.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
-### PHASE 10: VIDEO ENHANCEMENT: FILM GRAIN, WATERMARKS & FUSED PIPELINE (PHASES D4, D5, D9)
+### PHASE 10: VIDEO ENHANCEMENT: FILM GRAIN, WATERMARKS & UNIFIED PROCESSING PIPELINE (PHASES D4, D5, D9)
+- **Purpose:** Complete the video processing studio with organic film grain, watermark overlays, and a single-pass fused GPU pipeline.
 - **Scope:**
-  - Parametric film grain simulation in GLSL with dynamic temporal noise seed and luminance mask.
-  - Text and logo watermark compositor with alpha blending, positioning, and timing.
-  - Fused multi-stage GPU pipeline minimizing texture read/write passes.
-  - Comprehensive stress testing, thermal validation, and memory leak audit.
-- **Out of Scope:**
-  - Dolby Vision authoring (formally excluded).
+  - Parametric procedural film grain simulation in GLSL with temporal noise seed and luminance mask.
+  - 2D alpha texture compositor for custom text and PNG logo watermarks with temporal bounds.
+  - Dynamic fused GPU pipeline chaining active shader stages into minimal render passes:
+    $$\text{Decode} \rightarrow \text{Linearize} \rightarrow \text{Gamut} \rightarrow \text{Grade} \rightarrow \text{LUT} \rightarrow \text{ITM/PQ} \rightarrow \text{Grain} \rightarrow \text{Overlay} \rightarrow \text{Encode}$$
+- **Explicit Exclusions:** Dolby Vision authoring (strictly excluded).
+- **Prerequisites:** Phase 9 completion.
 - **Files Affected:**
   - `app/src/main/java/com/unidownco/engine/hdr/gpu/FilmGrainShader.kt` (New)
   - `app/src/main/java/com/unidownco/engine/overlay/WatermarkCompositor.kt` (New)
   - `app/src/main/java/com/unidownco/engine/hdr/gpu/FusedEnhancementPipeline.kt` (New)
-- **Database Impact:** Add watermark and grain metadata to `ProcessingJobEntity`.
-- **Exit Criteria:**
-  - Complete fused pipeline executes on 1080p 30 FPS video without dropping frames or triggering thermal shutdown.
-  - Clean video output with organic film grain and sharp, unclipped watermarks.
+- **Database Impact:** Add grain and watermark parameters to `processing_jobs`.
+- **Acceptance Criteria:**
+  - Fused pipeline processes 1080p 30 FPS video without dropping frames or memory leakage.
+  - Film grain appears natural and grain clumping is absent in deep blacks.
+  - Watermark alpha blending renders sharply without color clipping.
+- **Approval Gate:** Separate explicit user approval required.
 
 ---
 
-## 7. DEPENDENCY GRAPH & CRITICAL PATH
+### PHASE 11: PREMIUM UX & BACKGROUND EXPERIENCE (CORRECTION A)
+- **Purpose:** Harden application lifecycle resilience, background service compliance, queue orchestration, and user experience polish.
+- **Scope:**
+  - **Background Experience:**
+    - Audit and enforce Android 14/15/16 background execution compliance for `DownloadForegroundService` (type `dataSync`).
+    - Implement persistent notification controls (Pause, Resume, Cancel) with real-time throughput and byte counts.
+    - Robust recovery across app process death, low-memory kills (LMK), and device reboots via `StartupReconciliationWorker`.
+    - Clear distinction between transient retries and permanent terminal failures.
+  - **Queue Management:**
+    - Drag-and-drop queue priority reordering.
+    - Visual grouping by platform, status, and batch/playlist.
+    - Concurrency throttle: prevent simultaneous heavy transcode jobs while allowing parallel downloads.
+  - **Picture-in-Picture (PiP):**
+    - Support native Android PiP mode during video preview and playback.
+    - Handle seamless lifecycle transitions (`onUserLeaveHint`, aspect ratio preservation, auto-enter PiP).
+  - **User Experience & Accessibility:**
+    - Polished loading, empty, offline, permission, error, and recovery states adhering strictly to `DESIGN.md`.
+    - Full TalkBack accessibility labeling, touch target minimums ($48\times 48\text{dp}$), and dynamic font scaling.
+    - Responsive layout adaptation across compact phones, foldables, and large tablet screens.
+- **Explicit Exclusions:** Web-based interfaces (native Compose strictly required).
+- **Prerequisites:** Phases 6, 7, 8, 9, 10 completion.
+- **Files Affected:**
+  - `app/src/main/java/com/unidownco/core/network/DownloadForegroundService.kt`
+  - `app/src/main/java/com/unidownco/feature/queue/QueueScreen.kt`
+  - `app/src/main/java/com/unidownco/feature/queue/QueueViewModel.kt`
+  - `app/src/main/java/com/unidownco/feature/player/PipPlayerActivity.kt` (New)
+- **Acceptance Criteria:**
+  - Background downloads continue across 30+ minutes of screen-off deep sleep.
+  - Process death recovery restores queue state without duplicate files or database corruption.
+  - PiP transitions cleanly without video flicker or audio stutters.
+  - 100% TalkBack accessibility audit pass.
+- **Approval Gate:** Separate explicit user approval required.
+
+---
+
+### PHASE 12: FINAL QUALITY, SECURITY, COMPATIBILITY & RELEASE READINESS (CORRECTION B)
+- **Purpose:** Perform final stabilization, end-to-end multi-platform audit, security hardening, and release packaging verification.
+- **Scope:**
+  - **Downloader Integrity Audit:** Verify YouTube, Facebook, Direct HTTP, and Instagram routing under active rate limits and edge cases.
+  - **Media-Processing Integrity Audit:** Verify 8-bit HEVC, 10-bit HDR (on compatible hardware), rotation integrity, audio synchronization, and container health.
+  - **Storage & Database Audit:** Verify Room migration path ($v1 \rightarrow v2 \rightarrow v3 \rightarrow v4 \rightarrow v5$), scoped storage rules, and orphan cleanup.
+  - **Security & Privacy Audit:** Confirm Android Keystore encryption, zero-log sanitization of sensitive URLs/tokens, and strict dependency license compliance (LGPL/Apache).
+  - **Performance & Thermal Audit:** Verify memory footprint ($< 150\text{ MB}$ typical), zero memory leaks (LeakCanary audit), and thermal backpressure.
+  - **Release Governance & Packaging:**
+    - Verification of release package ID (`com.unidownco`) and debug ID (`com.unidownco.debug`).
+    - APK Signature Scheme v2/v3 verification.
+    - Automated generation of SHA-256 checksums across all ABI splits (`arm64-v8a`, `armeabi-v7a`, `universal`, `x86_64`).
+    - **Immutable Release Tag Policy:** Strict prohibition of force-updating or rewriting existing published tags (such as `v1.0.0`). Every release must use an incremental version code, a new version name, and a unique immutable Git tag.
+- **Explicit Exclusions:** Production release publication without explicit user signoff.
+- **Prerequisites:** All prior phases (Phases 1 through 11) completed and verified.
+- **Deliverables:**
+  - `FINAL_RELEASE_VERIFICATION_REPORT.md`
+  - Final Release Readiness Checklist with signoff gates.
+- **Acceptance Criteria:**
+  - 100% pass rate across automated regression suite (host unit tests + instrumentation tests).
+  - Zero critical security vulnerabilities and clean dependency audit.
+  - Immutable tag and release documentation prepared.
+- **Approval Gate:** Final release publication requires separate, explicit user authorization.
+
+---
+
+## 8. DEPENDENCY GRAPH & CRITICAL PATH
 
 ```
-[Phase 1: Stage 2.3.1.1 HDR10 Verification] ──► MUST BE COMPLETED FIRST
+[Phase 1: Stage 2.3.1.1 HDR10 Verification] ────────► MUST BE COMPLETED FIRST
                      │
                      ▼
-[Phase 2: Media Inspector & Analysis] ────────► Required for inspecting outputs
+[Phase 2: Media Inspector & Analysis] ──────────────► Required for inspecting outputs
        │                         │
        ▼                         ▼
 [Phase 3: Video Trimmer]   [Phase 4: Audio Extractor & Converter]
@@ -496,24 +662,30 @@ The implementation is structured into **10 granular, independently testable phas
 [Phase 5: Advanced Video Compressor]
        │
        ▼
-[Phase 6: Downloader Batch & Playlists] ──► Downloader Enhancement Branch
+[Phase 6: Downloader Batch & Playlists] ────────────► Downloader Enhancement Branch
        │
        ▼
 [Phase 7: Downloader Reliability & Subs]
        │
        ▼
-[Phase 8: Smart Library & Storage Dashboard] ──► Library & Data Hub
+[Phase 8: Smart Library & Storage Dashboard] ────────► Library & Data Hub
        │
        ▼
-[Phase 9: Enhancement: Color Grading & 3D LUT] ──► Enhancement Branch
+[Phase 9: Enhancement: Color Grading & 3D LUT] ──────► Enhancement Branch
        │
        ▼
-[Phase 10: Enhancement: Grain, Watermarks & Fused Graph]
+[Phase 10: Enhancement: Grain, Watermarks & Fused]
+       │
+       ▼
+[Phase 11: Premium UX & Background Experience] ──────► Full App Polish
+       │
+       ▼
+[Phase 12: Final Quality, Security & Release Readiness] ──► Release Gate
 ```
 
 ---
 
-## 8. DATABASE ARCHITECTURE & MIGRATION STRATEGY
+## 9. DATABASE ARCHITECTURE & MIGRATION STRATEGY
 
 ### Migration from v3 to v4 (Media Toolkit & Library Categorization)
 - **Changes:**
@@ -529,11 +701,11 @@ The implementation is structured into **10 granular, independently testable phas
 - **Changes:**
   - `processing_jobs`: Add `lutPath` (TEXT), `exposure` (REAL), `contrast` (REAL), `saturation` (REAL), `grainIntensity` (REAL), `watermarkJson` (TEXT).
 - **Safety Policy:**
-  - Add migrations with foreign key constraints intact.
+  - Explicit `Migration(4, 5)` with foreign key constraints intact.
 
 ---
 
-## 9. PERFORMANCE, MEMORY & THERMAL BUDGET
+## 10. PERFORMANCE, MEMORY & THERMAL BUDGET
 
 | Metric / Resource | Xiaomi SM6225 (Baseline) | OnePlus Snapdragon 8 Gen 3 (Target) | Failure Threshold / Safety Policy |
 |---|---|---|---|
@@ -542,21 +714,6 @@ The implementation is structured into **10 granular, independently testable phas
 | **GPU Texture Budget** | 1 intermediate FBO ($1080\text{p}$) | 2 intermediate FBOs ($4\text{K}$) | FBO reuse mandatory; no allocations per frame |
 | **Peak Transcode FPS** | $45 - 60\text{ FPS}$ ($1080\text{p}$) | $180 - 240\text{ FPS}$ ($1080\text{p}$) | $< 15\text{ FPS}$ triggers complexity warning |
 | **Thermal Mitigation** | Throttle at `THERMAL_STATUS_SEVERE` | Throttle at `THERMAL_STATUS_SEVERE` | Pause job at `CRITICAL`; resume on `MODERATE` |
-
----
-
-## 10. HARDWARE COMPATIBILITY MATRIX
-
-| Feature | Xiaomi Redmi Note (SM6225 / Adreno 610) | OnePlus Ace 5 / 13R (SM8650 / Adreno 750) | Software Fallback Strategy |
-|---|---|---|---|
-| **HEVC 8-Bit Hardware Encoding** | **VERIFIED ON DEVICE** (`c2.qti.hevc.encoder`) | **ARCHITECTURALLY READY** | Software C2 fallback if HW unavailable |
-| **HEVC Main10 10-Bit HW Encoding** | **UNSUPPORTED BY SILICON** | **ARCHITECTURALLY READY (Pending Physical)** | Gated to 8-Bit HEVC SDR ("8-Bit HW Only") |
-| **EGL RGBA_1010102 Surface** | **DRIVER EXPOSED / HW GATED** | **ARCHITECTURALLY READY (Pending Physical)** | Fallback to EGL RGBA_8888 |
-| **Fused GLSL ES 3.0 HDR Shader** | **VERIFIED ON DEVICE** | **ARCHITECTURALLY READY** | Bypass shader when SDR passthrough |
-| **3D LUT (`.cube`) GL_TEXTURE_3D** | Supported (ES 3.0) | Supported (ES 3.2) | 2D sliced texture fallback for ES 2.0 |
-| **Lossless Video Trimming** | **SUPPORTED** (Extractor/Muxer) | **SUPPORTED** | Transcode fallback for sub-GOP accuracy |
-| **Audio Extraction (AAC/Opus)** | **SUPPORTED** (Demuxer) | **SUPPORTED** | Transcode to MP3 via in-app FFmpeg |
-| **yt-dlp Companion Runtime** | **VERIFIED ON DEVICE** (v2026.10.26) | **ARCHITECTURALLY READY** | Native Kotlin extractor fallback |
 
 ---
 
@@ -595,10 +752,11 @@ The implementation is structured into **10 granular, independently testable phas
 | Risk Description | Severity | Probability | Mitigation Strategy |
 |---|---|---|---|
 | **1. Upstream Social Platform API Breaking Changes** | HIGH | HIGH | In-app dynamic yt-dlp updating via `YtDlpEngineManager`, multi-provider fallback registry. |
-| **2. Lack of Physical SM8650 Device for Main10 Verification** | HIGH | MEDIUM | Formal gating: Mark Main10 as "Architecturally Ready (Physical Test Pending)"; test on connected hardware when available. |
+| **2. Lack of Physical SM8650 Device for Main10 Verification** | HIGH | MEDIUM | Formal gating: Mark Main10 as `NOT EXECUTED (Hardware not physically connected)`; test on connected hardware when available. |
 | **3. Thermal Throttling during Long Transcode Jobs** | MEDIUM | HIGH | Enforce backpressure using `PowerManager.currentThermalStatus`; sleep 10ms on SEVERE; pause on CRITICAL. |
 | **4. Storage Exhaustion during High-Bitrate Transcodes** | HIGH | LOW | Pre-flight disk space check requiring $\ge 2.5\times$ estimated output size before transcode begins. |
 | **5. Large 3D LUT Memory Overhead** | MEDIUM | LOW | Restrict imported `.cube` LUT size to maximum $33\times 33\times 33$ ($143\text{ KB}$ raw texture memory). |
+| **6. Background Process Termination by OS** | MEDIUM | MEDIUM | Foreground service with ongoing notification, `WorkManager` fallback, startup queue reconciliation. |
 
 ---
 
@@ -616,7 +774,7 @@ The following features are **explicitly excluded** from the active roadmap:
 ## 15. EXPLICIT APPROVAL GATES & RECOMMENDED FIRST STAGE
 
 ### Approval Gates Policy
-Every implementation phase in Section 6 is an **independent milestone**. Completing one phase **does NOT authorize beginning the next phase**. The agent must stop, report verified test results, and wait for explicit user approval before proceeding.
+Every implementation phase in Section 7 is an **independent milestone**. Completing one phase **does NOT authorize beginning the next phase**. The agent must stop, report verified test results, and wait for explicit user approval before proceeding.
 
 ### Recommended First Implementation Stage
 **Recommendation:** **PHASE 1 (STAGE 2.3.1.1: HDR10 METADATA CORRECTION & END-TO-END BITSTREAM VERIFICATION)**
