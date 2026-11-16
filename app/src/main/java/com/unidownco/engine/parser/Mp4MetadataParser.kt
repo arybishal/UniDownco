@@ -215,6 +215,44 @@ object Mp4MetadataParser {
             pos = nextBoxPos
         }
 
+        if (hvcCBox != null && hvcCBox.nalUnits.isNotEmpty()) {
+            val bitstreamReport = HevcBitstreamParser.parseNalUnits(hvcCBox.nalUnits)
+            if (colrBox == null && bitstreamReport.spsList.isNotEmpty()) {
+                val sps = bitstreamReport.spsList[0]
+                if (sps.hasVui && sps.colorPrimaries != null) {
+                    colrBox = Mp4ColrBox(
+                        colorType = "nclx",
+                        colorPrimaries = sps.colorPrimaries,
+                        transferCharacteristics = sps.transferCharacteristics ?: 0,
+                        matrixCoefficients = sps.matrixCoefficients ?: 0,
+                        fullRangeFlag = sps.fullRange ?: false
+                    )
+                }
+            }
+            if (mdcvBox == null && bitstreamReport.mdcvSeiList.isNotEmpty()) {
+                val mdcv = bitstreamReport.mdcvSeiList[0]
+                mdcvBox = Mp4MdcvBox(
+                    greenX = mdcv.displayPrimariesGx,
+                    greenY = mdcv.displayPrimariesGy,
+                    blueX = mdcv.displayPrimariesBx,
+                    blueY = mdcv.displayPrimariesBy,
+                    redX = mdcv.displayPrimariesRx,
+                    redY = mdcv.displayPrimariesRy,
+                    whiteX = mdcv.whitePointX,
+                    whiteY = mdcv.whitePointY,
+                    maxMasteringLuminance = mdcv.maxMasteringLuminance,
+                    minMasteringLuminance = mdcv.minMasteringLuminance
+                )
+            }
+            if (clliBox == null && bitstreamReport.clliSeiList.isNotEmpty()) {
+                val clli = bitstreamReport.clliSeiList[0]
+                clliBox = Mp4ClliBox(
+                    maxCll = clli.maxCll,
+                    maxFall = clli.maxFall
+                )
+            }
+        }
+
         val isMain10 = hvcCBox?.profileIdc == 2 || hvcCBox?.bitDepthLuma == 10
         val isBt2020 = colrBox?.colorPrimaries == 9
         val isSmpte2084 = colrBox?.transferCharacteristics == 16
@@ -275,6 +313,44 @@ object Mp4MetadataParser {
             pos = entryEnd
         }
 
+        if (hvcCBox != null && hvcCBox.nalUnits.isNotEmpty()) {
+            val bitstreamReport = HevcBitstreamParser.parseNalUnits(hvcCBox.nalUnits)
+            if (colrBox == null && bitstreamReport.spsList.isNotEmpty()) {
+                val sps = bitstreamReport.spsList[0]
+                if (sps.hasVui && sps.colorPrimaries != null) {
+                    colrBox = Mp4ColrBox(
+                        colorType = "nclx",
+                        colorPrimaries = sps.colorPrimaries,
+                        transferCharacteristics = sps.transferCharacteristics ?: 0,
+                        matrixCoefficients = sps.matrixCoefficients ?: 0,
+                        fullRangeFlag = sps.fullRange ?: false
+                    )
+                }
+            }
+            if (mdcvBox == null && bitstreamReport.mdcvSeiList.isNotEmpty()) {
+                val mdcv = bitstreamReport.mdcvSeiList[0]
+                mdcvBox = Mp4MdcvBox(
+                    greenX = mdcv.displayPrimariesGx,
+                    greenY = mdcv.displayPrimariesGy,
+                    blueX = mdcv.displayPrimariesBx,
+                    blueY = mdcv.displayPrimariesBy,
+                    redX = mdcv.displayPrimariesRx,
+                    redY = mdcv.displayPrimariesRy,
+                    whiteX = mdcv.whitePointX,
+                    whiteY = mdcv.whitePointY,
+                    maxMasteringLuminance = mdcv.maxMasteringLuminance,
+                    minMasteringLuminance = mdcv.minMasteringLuminance
+                )
+            }
+            if (clliBox == null && bitstreamReport.clliSeiList.isNotEmpty()) {
+                val clli = bitstreamReport.clliSeiList[0]
+                clliBox = Mp4ClliBox(
+                    maxCll = clli.maxCll,
+                    maxFall = clli.maxFall
+                )
+            }
+        }
+
         return Mp4MetadataReport(
             hasMoov = true,
             videoCodecFourCc = videoCodecFourCc,
@@ -285,7 +361,7 @@ object Mp4MetadataParser {
             isMain10 = hvcCBox?.profileIdc == 2 || hvcCBox?.bitDepthLuma == 10,
             isBt2020 = colrBox?.colorPrimaries == 9,
             isSmpte2084 = colrBox?.transferCharacteristics == 16,
-            isGenuineHdr10 = (hvcCBox?.profileIdc == 2) && (colrBox?.colorPrimaries == 9) && (colrBox.transferCharacteristics == 16) && mdcvBox != null
+            isGenuineHdr10 = (hvcCBox?.profileIdc == 2 || hvcCBox?.bitDepthLuma == 10) && (colrBox?.colorPrimaries == 9) && (colrBox?.transferCharacteristics == 16) && mdcvBox != null
         )
     }
 

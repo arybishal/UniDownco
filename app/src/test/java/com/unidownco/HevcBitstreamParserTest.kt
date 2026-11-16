@@ -6,7 +6,9 @@ import com.unidownco.engine.hdr.HdrMasteringDisplay
 import com.unidownco.engine.parser.HevcBitstreamParser
 import com.unidownco.engine.parser.HevcSeiMessage
 import com.unidownco.engine.parser.Mp4MetadataParser
+import com.unidownco.engine.verifier.ProcessingOutputValidator
 import org.junit.Test
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -144,5 +146,123 @@ class HevcBitstreamParserTest {
         assertThat(hvcC.nalUnits).hasSize(1)
         assertThat(hvcC.nalUnits[0]).isEqualTo(nalUnit)
         assertThat(report.isMain10).isTrue()
+    }
+
+    @Test
+    fun testFixtureA_GenuineHdr10_TrueBt2020() {
+        val file = File("src/test/resources/fixtures/fixture_a_hdr10_main10_true2020.mp4").let {
+            if (it.exists()) it else File("app/src/test/resources/fixtures/fixture_a_hdr10_main10_true2020.mp4")
+        }
+        assertThat(file.exists()).isTrue()
+
+        val report = Mp4MetadataParser.parse(file)
+        assertThat(report.hasMoov).isTrue()
+        assertThat(report.isMain10).isTrue()
+        assertThat(report.isBt2020).isTrue()
+        assertThat(report.isSmpte2084).isTrue()
+        assertThat(report.isGenuineHdr10).isTrue()
+
+        // Verify True BT.2020 Primaries from MDCV
+        assertThat(report.mdcvBox).isNotNull()
+        val mdcv = report.mdcvBox!!
+        assertThat(mdcv.greenX).isEqualTo(8500)
+        assertThat(mdcv.greenY).isEqualTo(39850)
+        assertThat(mdcv.blueX).isEqualTo(6550)
+        assertThat(mdcv.blueY).isEqualTo(2300)
+        assertThat(mdcv.redX).isEqualTo(35400)
+        assertThat(mdcv.redY).isEqualTo(14600)
+        assertThat(mdcv.whiteX).isEqualTo(15635)
+        assertThat(mdcv.whiteY).isEqualTo(16450)
+        assertThat(mdcv.maxMasteringLuminance).isEqualTo(10_000_000L) // 1000 nits
+
+        // Verify CLLI
+        assertThat(report.clliBox).isNotNull()
+        assertThat(report.clliBox!!.maxCll).isEqualTo(1000)
+        assertThat(report.clliBox!!.maxFall).isEqualTo(400)
+    }
+
+    @Test
+    fun testFixtureB_GenuineHdr10_DciP3D65_OmittedClli() {
+        val file = File("src/test/resources/fixtures/fixture_b_hdr10_main10_dcip3_omitted_clli.mp4").let {
+            if (it.exists()) it else File("app/src/test/resources/fixtures/fixture_b_hdr10_main10_dcip3_omitted_clli.mp4")
+        }
+        assertThat(file.exists()).isTrue()
+
+        val report = Mp4MetadataParser.parse(file)
+        assertThat(report.hasMoov).isTrue()
+        assertThat(report.isMain10).isTrue()
+        assertThat(report.isBt2020).isTrue()
+        assertThat(report.isSmpte2084).isTrue()
+        assertThat(report.isGenuineHdr10).isTrue()
+
+        // Verify DCI-P3 D65 Primaries
+        assertThat(report.mdcvBox).isNotNull()
+        val mdcv = report.mdcvBox!!
+        assertThat(mdcv.greenX).isEqualTo(13250)
+        assertThat(mdcv.greenY).isEqualTo(34500)
+        assertThat(mdcv.blueX).isEqualTo(7500)
+        assertThat(mdcv.blueY).isEqualTo(3000)
+        assertThat(mdcv.redX).isEqualTo(34000)
+        assertThat(mdcv.redY).isEqualTo(16000)
+        assertThat(mdcv.whiteX).isEqualTo(15635)
+        assertThat(mdcv.whiteY).isEqualTo(16450)
+        assertThat(mdcv.maxMasteringLuminance).isEqualTo(10_000_000L)
+
+        // Verify standards-compliant omission of CLLI when unmeasured (omitted or signaled as 0 per CTA-861.3)
+        val isClliOmittedOrZero = report.clliBox == null || (report.clliBox!!.maxCll == 0 && report.clliBox!!.maxFall == 0)
+        assertThat(isClliOmittedOrZero).isTrue()
+    }
+
+    @Test
+    fun testFixtureC_SdrBaseline_RejectedWhenHdrExpected() {
+        val file = File("src/test/resources/fixtures/fixture_c_sdr_main_8bit.mp4").let {
+            if (it.exists()) it else File("app/src/test/resources/fixtures/fixture_c_sdr_main_8bit.mp4")
+        }
+        assertThat(file.exists()).isTrue()
+
+        val report = Mp4MetadataParser.parse(file)
+        assertThat(report.hasMoov).isTrue()
+        assertThat(report.isMain10).isFalse() // Main profile (8-bit)
+        assertThat(report.isBt2020).isFalse() // BT.709
+        assertThat(report.isSmpte2084).isFalse() // BT.709 transfer
+        assertThat(report.isGenuineHdr10).isFalse()
+    }
+
+    @Test
+    fun testFixtureD_FakeHdr8Bit_StrictlyRejected() {
+        val file = File("src/test/resources/fixtures/fixture_d_fake_hdr_8bit.mp4").let {
+            if (it.exists()) it else File("app/src/test/resources/fixtures/fixture_d_fake_hdr_8bit.mp4")
+        }
+        assertThat(file.exists()).isTrue()
+
+        val report = Mp4MetadataParser.parse(file)
+        assertThat(report.hasMoov).isTrue()
+        // Despite having BT.2020 / ST 2084 metadata, profile is Main (1) and bit depth is 8!
+        assertThat(report.isMain10).isFalse()
+        assertThat(report.isGenuineHdr10).isFalse()
+
+        // Assert validator strictly rejects fake HDR
+        val validation = ProcessingOutputValidator.validate(file, expectedHdr10 = true)
+        assertThat(validation.isValid).isFalse()
+        assertThat(validation.isHdr10).isFalse()
+        assertThat(validation.errorDetails).contains("Expected genuine 10-bit HDR10 output")
+    }
+
+    @Test
+    fun testCorruptedAndTruncatedBitstreams_NonCrashingGracefulDegradation() {
+        // Random garbage bytes
+        val garbage = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte(), 0x01, 0x02, 0x03)
+        val report = Mp4MetadataParser.parse(garbage)
+        assertThat(report.hasMoov).isFalse()
+        assertThat(report.isGenuineHdr10).isFalse()
+
+        // Truncated SEI NAL
+        val truncatedNal = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x4E, 0x01, 0x89.toByte(), 0x18, 0x01, 0x02)
+        val seiMessages = HevcBitstreamParser.parsePrefixSeiNal(truncatedNal)
+        assertThat(seiMessages).isEmpty() // Incomplete payload gracefully skipped
+
+        // Incomplete Annex B stream
+        val incompleteAnnexB = HevcBitstreamParser.parseAnnexB(truncatedNal)
+        assertThat(incompleteAnnexB.hasStaticMetadata).isFalse()
     }
 }
