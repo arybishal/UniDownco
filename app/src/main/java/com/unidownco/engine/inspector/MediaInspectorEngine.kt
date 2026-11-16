@@ -20,9 +20,19 @@ interface MediaInspectorEngine {
     suspend fun inspect(source: MediaSource): Result<MediaInspectionReport>
 
     /**
+     * Inspects a resolved [MediaSource] with optional Android [context] for hardware probing.
+     */
+    suspend fun inspect(source: MediaSource, context: Context?): Result<MediaInspectionReport>
+
+    /**
      * Resolves and inspects a local or downloaded [File].
      */
     suspend fun inspect(file: File): Result<MediaInspectionReport>
+
+    /**
+     * Resolves and inspects a local or downloaded [File] with optional Android [context].
+     */
+    suspend fun inspect(file: File, context: Context?): Result<MediaInspectionReport>
 
     /**
      * Resolves and inspects an Android content or file [Uri].

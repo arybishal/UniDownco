@@ -58,18 +58,20 @@ class DownloadFlowAndStorageTest {
     }
 
     @Test
-    fun testBottomNavTabs_HasFourDistinctFixedDestinations() {
+    fun testBottomNavTabs_HasDistinctFixedDestinations() {
         val tabs = UniNavTab.values()
-        assertEquals(4, tabs.size)
+        assertEquals(5, tabs.size)
         assertEquals(UniNavTab.HOME, tabs[0])
         assertEquals(UniNavTab.QUEUE, tabs[1])
         assertEquals(UniNavTab.LIBRARY, tabs[2])
-        assertEquals(UniNavTab.SETTINGS, tabs[3])
+        assertEquals(UniNavTab.INSPECTOR, tabs[3])
+        assertEquals(UniNavTab.SETTINGS, tabs[4])
 
         assertEquals("Home", tabs[0].title)
         assertEquals("Queue", tabs[1].title)
         assertEquals("Library", tabs[2].title)
-        assertEquals("Settings", tabs[3].title)
+        assertEquals("Inspector", tabs[3].title)
+        assertEquals("Settings", tabs[4].title)
     }
 
     @Test

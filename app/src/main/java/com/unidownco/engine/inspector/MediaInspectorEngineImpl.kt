@@ -7,38 +7,37 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import com.unidownco.core.logging.UniLog
-import com.unidownco.engine.hdr.MetadataProvenance
+import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.inspector.classifier.HdrClassificationEngine
+import com.unidownco.engine.inspector.classifier.HdrClassificationEngineImpl
+import com.unidownco.engine.inspector.evaluator.DeviceCompatibilityEvaluator
+import com.unidownco.engine.inspector.evaluator.DeviceCompatibilityEvaluatorImpl
 import com.unidownco.engine.inspector.model.AudioStreamDetails
 import com.unidownco.engine.inspector.model.BoxNode
 import com.unidownco.engine.inspector.model.ContainerDetails
-import com.unidownco.engine.inspector.model.ContentLightLevelReport
+import com.unidownco.engine.inspector.model.DeviceCompatibilityDetails
+import com.unidownco.engine.inspector.model.FrameRateMode
 import com.unidownco.engine.inspector.model.HdrClassification
 import com.unidownco.engine.inspector.model.HdrColorDetails
 import com.unidownco.engine.inspector.model.InspectionError
 import com.unidownco.engine.inspector.model.InspectionWarning
-import com.unidownco.engine.inspector.model.MasteringDisplayReport
 import com.unidownco.engine.inspector.model.MediaInspectionReport
 import com.unidownco.engine.inspector.model.MediaOverview
-import com.unidownco.engine.inspector.model.MetadataConflictAlert
 import com.unidownco.engine.inspector.model.SubtitleStreamDetails
 import com.unidownco.engine.inspector.model.VideoStreamDetails
 import com.unidownco.engine.inspector.model.WarningSeverity
+import com.unidownco.engine.inspector.source.ContentUriMediaSource
 import com.unidownco.engine.inspector.source.LocalFileMediaSource
 import com.unidownco.engine.inspector.source.MediaSource
 import com.unidownco.engine.inspector.source.MediaSourceResolver
 import com.unidownco.engine.parser.HevcBitstreamParser
 import com.unidownco.engine.parser.HevcBitstreamReport
-import com.unidownco.engine.parser.HevcSpsInfo
-import com.unidownco.engine.parser.Mp4ClliBox
-import com.unidownco.engine.parser.Mp4ColrBox
-import com.unidownco.engine.parser.Mp4MdcvBox
 import com.unidownco.engine.parser.Mp4MetadataParser
 import com.unidownco.engine.parser.Mp4MetadataReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
@@ -50,9 +49,13 @@ import kotlin.coroutines.coroutineContext
  * 2. Media framework tracks via [MediaExtractor] and [MediaMetadataRetriever]
  * 3. Timing, nominal frame rate, average frame rate, and VFR detection
  * 4. HEVC bitstream verification (SPS VUI colorimetry, SEI 137 MDCV, SEI 144 CLLI)
- * 5. Optical HDR validation, conflict detection, and fake HDR rejection
+ * 5. Authoritative HDR classification via [HdrClassificationEngine]
+ * 6. Silicon device compatibility evaluation via [DeviceCompatibilityEvaluator]
  */
-class MediaInspectorEngineImpl : MediaInspectorEngine {
+class MediaInspectorEngineImpl(
+    private val classificationEngine: HdrClassificationEngine = HdrClassificationEngineImpl(),
+    private val compatibilityEvaluator: DeviceCompatibilityEvaluator = DeviceCompatibilityEvaluatorImpl()
+) : MediaInspectorEngine {
 
     companion object {
         private const val TAG = "MediaInspectorEngine"
@@ -60,11 +63,13 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         private const val MAX_VFR_PROBE_SAMPLES = 90
     }
 
-    override suspend fun inspect(file: File): Result<MediaInspectionReport> = withContext(Dispatchers.IO) {
+    override suspend fun inspect(file: File): Result<MediaInspectionReport> = inspect(file, null)
+
+    override suspend fun inspect(file: File, context: Context?): Result<MediaInspectionReport> = withContext(Dispatchers.IO) {
         val sourceResult = MediaSourceResolver.resolve(file)
         val source = sourceResult.getOrElse { return@withContext Result.failure(it) }
         source.use { s ->
-            inspect(s)
+            inspect(s, context)
         }
     }
 
@@ -72,11 +77,13 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         val sourceResult = MediaSourceResolver.resolve(uri, context)
         val source = sourceResult.getOrElse { return@withContext Result.failure(it) }
         source.use { s ->
-            inspect(s)
+            inspect(s, context)
         }
     }
 
-    override suspend fun inspect(source: MediaSource): Result<MediaInspectionReport> = withContext(Dispatchers.IO) {
+    override suspend fun inspect(source: MediaSource): Result<MediaInspectionReport> = inspect(source, null)
+
+    override suspend fun inspect(source: MediaSource, context: Context?): Result<MediaInspectionReport> = withContext(Dispatchers.IO) {
         coroutineContext.ensureActive()
 
         val warnings = mutableListOf<InspectionWarning>()
@@ -155,20 +162,11 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
             rawMimeType = source.mimeType
         )
 
-        // 6. HDR and Colorimetry synthesis & Conflict Detection
-        val conflicts = detectMetadataConflicts(mp4Report, bitstreamReport)
-        for (conflict in conflicts) {
-            warnings.add(
-                InspectionWarning(
-                    severity = WarningSeverity.WARNING,
-                    code = "METADATA_CONFLICT",
-                    message = "Metadata mismatch on ${conflict.fieldName}: container declares '${conflict.containerValue}' but bitstream declares '${conflict.bitstreamValue}'.",
-                    technicalImpact = conflict.resolutionDescription
-                )
-            )
-        }
-
-        val hdrDetails = evaluateHdrDetails(mp4Report, bitstreamReport, primaryVideo, conflicts, warnings)
+        // 6. Dedicated HDR Classification via HdrClassificationEngine
+        val classificationResult = classificationEngine.evaluate(mp4Report, bitstreamReport, primaryVideo)
+        val hdrDetails = classificationResult.hdrColorDetails
+        warnings.addAll(classificationResult.warnings)
+        errors.addAll(classificationResult.errors)
 
         // Collect container warnings
         mp4Report?.warnings?.forEach { w ->
@@ -237,20 +235,31 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
             sha256Digest = sha256
         )
 
-        val report = MediaInspectionReport(
+        // Interim report for device compatibility evaluation
+        val interimReport = MediaInspectionReport(
             overview = overview,
             videoStreams = videoStreams,
             audioStreams = audioStreams,
             subtitleStreams = subtitleStreams,
             hdrDetails = hdrDetails,
             containerDetails = containerDetails,
-            deviceCompatibility = null, // Evaluated in Subphase 2.3
+            deviceCompatibility = null,
             warnings = warnings,
             errors = errors,
             isComplete = errors.isEmpty()
         )
 
-        Result.success(report)
+        // 7. Device Compatibility Evaluation via DeviceCompatibilityEvaluator
+        val activeContext = context ?: (source as? ContentUriMediaSource)?.context
+        val deviceCompatibility = if (activeContext != null) {
+            val capabilities = HardwareCapabilityRegistry.getCapabilities()
+            compatibilityEvaluator.evaluate(interimReport, capabilities)
+        } else {
+            null
+        }
+
+        val finalReport = interimReport.copy(deviceCompatibility = deviceCompatibility)
+        Result.success(finalReport)
     }
 
     private fun buildEmptyReport(
@@ -286,7 +295,8 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         val bitrateKbps: Long? = null,
         val rotationDegrees: Int = 0,
         val averageFps: Double? = null,
-        val isVfr: Boolean? = null
+        val isVfr: Boolean? = null,
+        val frameRateMode: FrameRateMode = FrameRateMode.UNKNOWN_FRAME_RATE
     )
 
     private fun inspectWithFramework(source: MediaSource): FrameworkData {
@@ -296,6 +306,7 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         var rotationDegrees = 0
         var avgFps: Double? = null
         var isVfr: Boolean? = null
+        var frameRateMode = FrameRateMode.UNKNOWN_FRAME_RATE
 
         // MediaMetadataRetriever
         try {
@@ -334,9 +345,10 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
 
                 // Sample bounded presentation timestamps for VFR detection
                 if (primaryVideoTrackIndex != -1) {
-                    val vfrResult = probeFrameRateAndVfr(extractor, primaryVideoTrackIndex)
-                    avgFps = vfrResult.first
-                    isVfr = vfrResult.second
+                    val timingResult = probeFrameRateAndVfr(extractor, primaryVideoTrackIndex)
+                    avgFps = timingResult.averageFps
+                    isVfr = timingResult.isVfr
+                    frameRateMode = timingResult.frameRateMode
                 }
             } finally {
                 extractor.release()
@@ -351,7 +363,8 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
             bitrateKbps = bitrateKbps,
             rotationDegrees = rotationDegrees,
             averageFps = avgFps,
-            isVfr = isVfr
+            isVfr = isVfr,
+            frameRateMode = frameRateMode
         )
     }
 
@@ -383,49 +396,79 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         }
     }
 
-    private fun probeFrameRateAndVfr(extractor: MediaExtractor, trackIndex: Int): Pair<Double?, Boolean?> {
+    private data class TimingProbeResult(
+        val averageFps: Double?,
+        val isVfr: Boolean?,
+        val frameRateMode: FrameRateMode
+    )
+
+    private fun probeFrameRateAndVfr(extractor: MediaExtractor, trackIndex: Int): TimingProbeResult {
         return try {
             extractor.selectTrack(trackIndex)
-            val timestampsUs = mutableListOf<Long>()
+            val rawTimestampsUs = mutableListOf<Long>()
             var sampleCount = 0
 
             while (sampleCount < MAX_VFR_PROBE_SAMPLES) {
                 val sampleTime = extractor.sampleTime
                 if (sampleTime < 0) break
-                timestampsUs.add(sampleTime)
+                rawTimestampsUs.add(sampleTime)
                 sampleCount++
                 if (!extractor.advance()) break
             }
             extractor.unselectTrack(trackIndex)
 
-            if (timestampsUs.size < 2) {
-                return Pair(null, null)
+            if (rawTimestampsUs.size < 2) {
+                return TimingProbeResult(null, null, FrameRateMode.UNKNOWN_FRAME_RATE)
             }
 
-            val totalDurationUs = timestampsUs.last() - timestampsUs.first()
+            // Filter out negative and duplicate presentation timestamps, ensuring monotonic order
+            val validTimestamps = rawTimestampsUs.filter { it >= 0 }.distinct().sorted()
+            if (validTimestamps.size < 2) {
+                return TimingProbeResult(null, null, FrameRateMode.UNKNOWN_FRAME_RATE)
+            }
+
+            val totalDurationUs = validTimestamps.last() - validTimestamps.first()
             val avgFps = if (totalDurationUs > 0) {
-                val rawFps = ((timestampsUs.size - 1) * 1_000_000.0) / totalDurationUs
-                Math.round(rawFps * 100.0) / 100.0
+                val rawFps = ((validTimestamps.size - 1) * 1_000_000.0) / totalDurationUs
+                Math.round(rawFps * 1000.0) / 1000.0
             } else null
 
             val deltas = mutableListOf<Long>()
-            for (k in 1 until timestampsUs.size) {
-                val d = timestampsUs[k] - timestampsUs[k - 1]
+            for (k in 1 until validTimestamps.size) {
+                val d = validTimestamps[k] - validTimestamps[k - 1]
                 if (d > 0) deltas.add(d)
             }
 
-            val isVfr = if (deltas.size >= 5) {
-                val mean = deltas.average()
-                val variance = deltas.map { (it - mean) * (it - mean) }.average()
-                val stdDev = Math.sqrt(variance)
-                // CV > 0.10 indicates >10% jitter/variable frame rate
-                (stdDev / mean) > 0.10
-            } else null
+            if (deltas.size < 5) {
+                return TimingProbeResult(avgFps, null, FrameRateMode.UNKNOWN_FRAME_RATE)
+            }
 
-            Pair(avgFps, isVfr)
+            // Filter out large discontinuity/gap outliers (> 5x median) from regular frame cadence
+            val sortedDeltas = deltas.sorted()
+            val medianDelta = sortedDeltas[sortedDeltas.size / 2]
+            val normalCadenceDeltas = deltas.filter { it <= medianDelta * 5 }
+
+            if (normalCadenceDeltas.size < 5) {
+                return TimingProbeResult(avgFps, null, FrameRateMode.UNKNOWN_FRAME_RATE)
+            }
+
+            val mean = normalCadenceDeltas.average()
+            val variance = normalCadenceDeltas.map { (it - mean) * (it - mean) }.average()
+            val stdDev = Math.sqrt(variance)
+            val cv = if (mean > 0) stdDev / mean else 0.0
+
+            // Fractional cadences (29.97, 59.94) exhibit rounding jitter with CV ~ 0.005 - 0.03.
+            // True variable frame rate (VFR) content has CV > 0.08.
+            val (isVfr, mode) = when {
+                cv <= 0.08 -> Pair(false, FrameRateMode.CONSTANT_FRAME_RATE)
+                normalCadenceDeltas.size >= 25 -> Pair(true, FrameRateMode.VARIABLE_FRAME_RATE_CONFIRMED)
+                else -> Pair(true, FrameRateMode.VARIABLE_FRAME_RATE_SUSPECTED)
+            }
+
+            TimingProbeResult(avgFps, isVfr, mode)
         } catch (_: Exception) {
             try { extractor.unselectTrack(trackIndex) } catch (_: Exception) {}
-            Pair(null, null)
+            TimingProbeResult(null, null, FrameRateMode.UNKNOWN_FRAME_RATE)
         }
     }
 
@@ -506,6 +549,7 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
                     nominalFrameRate = nominalFps,
                     averageFrameRate = if (idx == 0) frameworkData.averageFps else null,
                     isVariableFrameRate = if (idx == 0) frameworkData.isVfr else null,
+                    frameRateMode = if (idx == 0) frameworkData.frameRateMode else FrameRateMode.UNKNOWN_FRAME_RATE,
                     bitrateKbps = bitrate,
                     bitDepth = bitDepth ?: 8,
                     profileName = mapProfileName(track.mime, profile),
@@ -658,186 +702,6 @@ class MediaInspectorEngineImpl : MediaInspectorEngine {
         }
 
         return null
-    }
-
-    private fun detectMetadataConflicts(
-        mp4Report: Mp4MetadataReport?,
-        bitstreamReport: HevcBitstreamReport?
-    ): List<MetadataConflictAlert> {
-        val conflicts = mutableListOf<MetadataConflictAlert>()
-        val colr = mp4Report?.colrBox ?: return conflicts
-        val sps = bitstreamReport?.spsList?.firstOrNull() ?: return conflicts
-
-        if (sps.hasVui) {
-            if (sps.colorPrimaries != null && colr.colorPrimaries != sps.colorPrimaries) {
-                conflicts.add(
-                    MetadataConflictAlert(
-                        fieldName = "color_primaries",
-                        containerValue = "${mapColorPrimaries(colr.colorPrimaries)} (${colr.colorPrimaries})",
-                        bitstreamValue = "${mapColorPrimaries(sps.colorPrimaries)} (${sps.colorPrimaries})",
-                        resolutionDescription = "Bitstream VUI takes precedence during decoder rendering; container box governs demuxer routing."
-                    )
-                )
-            }
-            if (sps.transferCharacteristics != null && colr.transferCharacteristics != sps.transferCharacteristics) {
-                conflicts.add(
-                    MetadataConflictAlert(
-                        fieldName = "transfer_characteristics",
-                        containerValue = "${mapColorTransfer(colr.transferCharacteristics)} (${colr.transferCharacteristics})",
-                        bitstreamValue = "${mapColorTransfer(sps.transferCharacteristics)} (${sps.transferCharacteristics})",
-                        resolutionDescription = "Bitstream transfer curve takes precedence during decoder tone mapping."
-                    )
-                )
-            }
-            if (sps.matrixCoefficients != null && colr.matrixCoefficients != sps.matrixCoefficients) {
-                conflicts.add(
-                    MetadataConflictAlert(
-                        fieldName = "matrix_coefficients",
-                        containerValue = "${mapMatrixCoefficients(colr.matrixCoefficients)} (${colr.matrixCoefficients})",
-                        bitstreamValue = "${mapMatrixCoefficients(sps.matrixCoefficients)} (${sps.matrixCoefficients})",
-                        resolutionDescription = "Bitstream matrix coefficients govern YUV-to-RGB color transform."
-                    )
-                )
-            }
-            if (sps.fullRange != null && colr.fullRangeFlag != sps.fullRange) {
-                conflicts.add(
-                    MetadataConflictAlert(
-                        fieldName = "full_range_flag",
-                        containerValue = "${colr.fullRangeFlag}",
-                        bitstreamValue = "${sps.fullRange}",
-                        resolutionDescription = "Bitstream range flag governs quantization level scaling."
-                    )
-                )
-            }
-        }
-
-        return conflicts
-    }
-
-    private fun evaluateHdrDetails(
-        mp4Report: Mp4MetadataReport?,
-        bitstreamReport: HevcBitstreamReport?,
-        primaryVideo: VideoStreamDetails?,
-        conflicts: List<MetadataConflictAlert>,
-        warnings: MutableList<InspectionWarning>
-    ): HdrColorDetails {
-        val colr = mp4Report?.colrBox
-        val mdcvBox = mp4Report?.mdcvBox
-        val clliBox = mp4Report?.clliBox
-
-        val sps = bitstreamReport?.spsList?.firstOrNull()
-        val bitstreamMdcv = bitstreamReport?.mdcvSeiList?.firstOrNull()
-        val bitstreamClli = bitstreamReport?.clliSeiList?.firstOrNull()
-
-        val bitDepth = primaryVideo?.bitDepth ?: (sps?.bitDepthLuma ?: (mp4Report?.hvcCBox?.bitDepthLuma ?: 8))
-        val primariesIdc = sps?.colorPrimaries ?: colr?.colorPrimaries
-        val transferIdc = sps?.transferCharacteristics ?: colr?.transferCharacteristics
-        val matrixIdc = sps?.matrixCoefficients ?: colr?.matrixCoefficients
-        val fullRange = sps?.fullRange ?: colr?.fullRangeFlag
-
-        // Mastering display synthesis
-        val masteringDisplay = when {
-            mdcvBox != null -> MasteringDisplayReport(
-                greenX = mdcvBox.greenX / 50000.0,
-                greenY = mdcvBox.greenY / 50000.0,
-                blueX = mdcvBox.blueX / 50000.0,
-                blueY = mdcvBox.blueY / 50000.0,
-                redX = mdcvBox.redX / 50000.0,
-                redY = mdcvBox.redY / 50000.0,
-                whitePointX = mdcvBox.whiteX / 50000.0,
-                whitePointY = mdcvBox.whiteY / 50000.0,
-                maxLuminanceNits = mdcvBox.maxMasteringLuminanceNits,
-                minLuminanceNits = mdcvBox.minMasteringLuminanceNits,
-                provenance = MetadataProvenance.SOURCE_DECLARED,
-                sourceLocation = "ISOBMFF 'mdcv' atom"
-            )
-            bitstreamMdcv != null -> MasteringDisplayReport(
-                greenX = bitstreamMdcv.displayPrimariesGx / 50000.0,
-                greenY = bitstreamMdcv.displayPrimariesGy / 50000.0,
-                blueX = bitstreamMdcv.displayPrimariesBx / 50000.0,
-                blueY = bitstreamMdcv.displayPrimariesBy / 50000.0,
-                redX = bitstreamMdcv.displayPrimariesRx / 50000.0,
-                redY = bitstreamMdcv.displayPrimariesRy / 50000.0,
-                whitePointX = bitstreamMdcv.whitePointX / 50000.0,
-                whitePointY = bitstreamMdcv.whitePointY / 50000.0,
-                maxLuminanceNits = bitstreamMdcv.maxMasteringLuminanceNits,
-                minLuminanceNits = bitstreamMdcv.minMasteringLuminanceNits,
-                provenance = MetadataProvenance.SOURCE_DECLARED,
-                sourceLocation = "HEVC SEI 137 (Mastering Display Colour Volume)"
-            )
-            else -> null
-        }
-
-        // Content light level synthesis
-        val clliReport = when {
-            clliBox != null -> ContentLightLevelReport(
-                maxCllNits = clliBox.maxCll,
-                maxFallNits = clliBox.maxFall,
-                provenance = MetadataProvenance.SOURCE_DECLARED,
-                sourceLocation = "ISOBMFF 'clli' atom"
-            )
-            bitstreamClli != null -> ContentLightLevelReport(
-                maxCllNits = bitstreamClli.maxCll,
-                maxFallNits = bitstreamClli.maxFall,
-                provenance = MetadataProvenance.SOURCE_DECLARED,
-                sourceLocation = "HEVC SEI 144 (Content Light Level)"
-            )
-            else -> null
-        }
-
-        // HDR Classification logic & Fake HDR Rejection
-        val is8Bit = bitDepth == 8
-        val hasHdrSignaling = transferIdc == 16 || transferIdc == 18 || primariesIdc == 9
-
-        val classification: HdrClassification
-        if (is8Bit && hasHdrSignaling) {
-            classification = HdrClassification.FAKE_HDR_REJECTED
-            warnings.add(
-                InspectionWarning(
-                    severity = WarningSeverity.CRITICAL,
-                    code = "FAKE_HDR_DETECTED",
-                    message = "Fake HDR rejected: 8-bit stream with HDR color signaling (${mapColorPrimaries(primariesIdc)}, ${mapColorTransfer(transferIdc)}).",
-                    technicalImpact = "Genuine HDR requires minimum 10-bit precision. 8-bit precision causes severe color banding, posterization, and inaccurate luminance tone mapping."
-                )
-            )
-        } else if (bitDepth >= 10 && primariesIdc == 9 && transferIdc == 16) {
-            if (masteringDisplay != null) {
-                classification = HdrClassification.GENUINE_HDR10
-            } else {
-                classification = HdrClassification.PARTIAL_HDR
-                warnings.add(
-                    InspectionWarning(
-                        severity = WarningSeverity.WARNING,
-                        code = "HDR10_METADATA_MISSING",
-                        message = "Main10 BT.2020 PQ stream lacks SMPTE ST 2086 mastering display metadata (MDCV / SEI 137).",
-                        technicalImpact = "Target displays cannot adapt peak brightness to original mastering monitor optics."
-                    )
-                )
-            }
-        } else if (transferIdc == 18) {
-            classification = HdrClassification.HLG
-        } else if (primariesIdc == 1 || transferIdc == 1 || transferIdc == 13 || transferIdc == 6) {
-            classification = HdrClassification.SDR_BT709
-        } else if (hasHdrSignaling) {
-            classification = HdrClassification.PARTIAL_HDR
-        } else {
-            classification = HdrClassification.UNKNOWN
-        }
-
-        return HdrColorDetails(
-            classification = classification,
-            colorPrimariesName = mapColorPrimaries(primariesIdc),
-            colorTransferName = mapColorTransfer(transferIdc),
-            matrixCoefficientsName = mapMatrixCoefficients(matrixIdc),
-            colorRangeName = mapColorRange(fullRange),
-            bitDepth = bitDepth,
-            masteringDisplay = masteringDisplay,
-            contentLightLevel = clliReport,
-            dolbyVisionInfo = null,
-            containerAtomVerified = colr != null,
-            bitstreamSeiVerified = bitstreamMdcv != null,
-            conflicts = conflicts
-        )
     }
 
     private fun computeSha256(source: MediaSource): String? {

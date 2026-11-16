@@ -30,6 +30,8 @@ import com.unidownco.core.logging.UniLog
 import com.unidownco.feature.details.VideoDetailsScreen
 import com.unidownco.feature.home.HomeScreen
 import com.unidownco.feature.home.HomeViewModel
+import com.unidownco.feature.inspector.MediaInspectorScreen
+import com.unidownco.feature.inspector.MediaInspectorViewModel
 import com.unidownco.feature.library.LibraryScreen
 import com.unidownco.feature.library.LibraryViewModel
 import com.unidownco.feature.queue.QueueScreen
@@ -42,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModels()
     private val queueViewModel: QueueViewModel by viewModels()
     private val libraryViewModel: LibraryViewModel by viewModels()
+    private val inspectorViewModel: MediaInspectorViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     queueViewModel = queueViewModel,
                     libraryViewModel = libraryViewModel,
+                    inspectorViewModel = inspectorViewModel,
                     settingsViewModel = settingsViewModel
                 )
             }
@@ -107,6 +111,7 @@ fun MainAppContainer(
     homeViewModel: HomeViewModel,
     queueViewModel: QueueViewModel,
     libraryViewModel: LibraryViewModel,
+    inspectorViewModel: MediaInspectorViewModel,
     settingsViewModel: SettingsViewModel
 ) {
     var currentTab by remember { mutableStateOf(UniNavTab.HOME) }
@@ -135,7 +140,12 @@ fun MainAppContainer(
                 VideoDetailsScreen(
                     downloadId = selectedDetailId!!,
                     viewModel = libraryViewModel,
-                    onNavigateBack = { selectedDetailId = null }
+                    onNavigateBack = { selectedDetailId = null },
+                    onInspectMedia = { file ->
+                        inspectorViewModel.inspectFile(file)
+                        selectedDetailId = null
+                        currentTab = UniNavTab.INSPECTOR
+                    }
                 )
             } else {
                 when (currentTab) {
@@ -148,7 +158,14 @@ fun MainAppContainer(
                     )
                     UniNavTab.LIBRARY -> LibraryScreen(
                         viewModel = libraryViewModel,
-                        onNavigateToDetails = { id -> selectedDetailId = id }
+                        onNavigateToDetails = { id -> selectedDetailId = id },
+                        onInspectMedia = { file ->
+                            inspectorViewModel.inspectFile(file)
+                            currentTab = UniNavTab.INSPECTOR
+                        }
+                    )
+                    UniNavTab.INSPECTOR -> MediaInspectorScreen(
+                        viewModel = inspectorViewModel
                     )
                     UniNavTab.SETTINGS -> SettingsScreen(
                         viewModel = settingsViewModel

@@ -114,4 +114,50 @@ class MediaInspectorDeviceTest {
             assertEquals(8, report.hdrDetails.bitDepth)
         }
     }
+
+    @Test
+    fun testDeviceInspection_GenuineHdr10OmittedClli_FixtureB() {
+        runBlocking {
+            val file = File("/data/local/tmp/fixture_b_hdr10_main10_dcip3_omitted_clli.mp4")
+            assertTrue("Fixture B must exist on device", file.exists())
+
+            val result = engine.inspect(file)
+            assertTrue(result.isSuccess)
+
+            val report = result.getOrThrow()
+            assertEquals(HdrClassification.GENUINE_HDR10, report.hdrDetails.classification)
+            assertTrue(report.hdrDetails.classification.isHdr)
+            assertNotNull(report.hdrDetails.masteringDisplay)
+            assertNotNull(report.hdrDetails.contentLightLevel)
+            assertEquals(0, report.hdrDetails.contentLightLevel?.maxCllNits)
+            assertEquals(0, report.hdrDetails.contentLightLevel?.maxFallNits)
+        }
+    }
+
+    @Test
+    fun testDeviceInspection_DeviceCompatibilityEvaluation_SM6225HardwareHonesty() {
+        runBlocking {
+            val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+            val file = File("/data/local/tmp/fixture_a_hdr10_main10_true2020.mp4")
+            assertTrue("Fixture A must exist on device", file.exists())
+
+            val result = engine.inspect(file, context)
+            assertTrue(result.isSuccess)
+
+            val report = result.getOrThrow()
+            val dev = report.deviceCompatibility
+            assertNotNull("Device compatibility report must be populated", dev)
+
+            // Physical Hardware Truth on Xiaomi SM6225 (Redmi Note 14 4G):
+            // 1. Video decoding is hardware accelerated via c2.qti.hevc.decoder
+            assertEquals(com.unidownco.engine.inspector.model.CompatibilityStatus.AVAILABLE, dev?.videoDecodeSupport)
+
+            // 2. Hardware HEVC Main10 encoder is STRICTLY UNSUPPORTED on SM6225
+            assertEquals(com.unidownco.engine.inspector.model.CompatibilityStatus.HARDWARE_UNSUPPORTED, dev?.hevcMain10HardwareEncode)
+
+            // 3. Cadence mode verified as CFR for standard fixture
+            val video = report.videoStreams.first()
+            assertEquals(com.unidownco.engine.inspector.model.FrameRateMode.CONSTANT_FRAME_RATE, video.frameRateMode)
+        }
+    }
 }

@@ -1,6 +1,16 @@
 package com.unidownco.engine.inspector.model
 
 /**
+ * Technical classification of the temporal presentation cadence.
+ */
+enum class FrameRateMode(val label: String) {
+    CONSTANT_FRAME_RATE("Constant Frame Rate (CFR)"),
+    VARIABLE_FRAME_RATE_CONFIRMED("Variable Frame Rate (VFR) Confirmed"),
+    VARIABLE_FRAME_RATE_SUSPECTED("Variable Frame Rate (VFR) Suspected"),
+    UNKNOWN_FRAME_RATE("Unknown Frame Rate")
+}
+
+/**
  * Common abstraction for all media tracks (video, audio, subtitle) within a container.
  */
 sealed interface StreamDetails {
@@ -33,6 +43,7 @@ data class VideoStreamDetails(
     val nominalFrameRate: Double? = null,
     val averageFrameRate: Double? = null,
     val isVariableFrameRate: Boolean? = null,
+    val frameRateMode: FrameRateMode = FrameRateMode.UNKNOWN_FRAME_RATE,
     val bitrateKbps: Long? = null,
     val bitDepth: Int? = null,
     val profileName: String? = null,

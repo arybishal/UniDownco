@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -97,6 +98,7 @@ enum class UniNavTab(val title: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     QUEUE("Queue", Icons.Default.Download),
     LIBRARY("Library", Icons.Default.VideoLibrary),
+    INSPECTOR("Inspector", Icons.Default.Analytics),
     SETTINGS("Settings", Icons.Default.Settings)
 }
 

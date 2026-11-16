@@ -13,6 +13,7 @@ enum class HdrClassification(val label: String, val isHdr: Boolean) {
     PARTIAL_HDR("Partial HDR (Signaling Incomplete / Non-Standard)", true),
     FAKE_HDR_REJECTED("Fake HDR Rejected (8-bit with HDR Signaling)", false),
     SDR_BT709("SDR (BT.709 Standard Dynamic Range)", false),
+    MALFORMED_OR_CONFLICTING("Malformed / Conflicting Metadata", false),
     UNKNOWN("Unknown / Unspecified", false)
 }
 

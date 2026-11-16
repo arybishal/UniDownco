@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SaveAlt
@@ -40,12 +41,14 @@ import com.unidownco.core.design.theme.UniDownTheme
 import com.unidownco.core.design.theme.UniMonoTypography
 import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.feature.library.LibraryViewModel
+import java.io.File
 
 @Composable
 fun VideoDetailsScreen(
     downloadId: Long,
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
+    onInspectMedia: (File) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val completedVideos by viewModel.completedVideos.collectAsState()
@@ -196,6 +199,28 @@ fun VideoDetailsScreen(
                             Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("SHARE", style = AppTypography.labelSmall)
+                        }
+                    }
+                }
+
+                // Media Inspector Action
+                item {
+                    val downloadPath = item.downloadPath
+                    if (!downloadPath.isNullOrBlank()) {
+                        val file = File(downloadPath)
+                        if (file.exists()) {
+                            UniOutlinedButton(
+                                onClick = { onInspectMedia(file) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Analytics,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("INSPECT IN MEDIA INSPECTOR", style = AppTypography.labelSmall)
+                            }
                         }
                     }
                 }

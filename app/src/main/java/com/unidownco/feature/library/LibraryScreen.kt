@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SaveAlt
@@ -46,11 +47,13 @@ import com.unidownco.core.design.theme.UniMonoTypography
 import com.unidownco.core.design.theme.UniShapes
 import com.unidownco.core.design.theme.UniSpacing
 import com.unidownco.domain.models.DownloadItem
+import java.io.File
 
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onNavigateToDetails: (Long) -> Unit,
+    onInspectMedia: (File) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val completedVideos by viewModel.completedVideos.collectAsState()
@@ -146,6 +149,14 @@ fun LibraryScreen(
                         onShare = { viewModel.shareVideo(item) },
                         onExport = { viewModel.onExportToGallery(item) },
                         onDelete = { viewModel.onDelete(item.id) },
+                        onInspect = item.downloadPath?.let { path ->
+                            {
+                                val file = File(path)
+                                if (file.exists()) {
+                                    onInspectMedia(file)
+                                }
+                            }
+                        },
                         onClick = { onNavigateToDetails(item.id) }
                     )
                 }
@@ -162,6 +173,7 @@ fun LibraryVideoCard(
     onShare: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit,
+    onInspect: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val colors = UniDownTheme.colors
@@ -249,6 +261,20 @@ fun LibraryVideoCard(
                     Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("SHARE", style = AppTypography.labelSmall)
+                }
+
+                if (onInspect != null) {
+                    UniOutlinedButton(
+                        onClick = onInspect,
+                        modifier = Modifier.width(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Analytics,
+                            contentDescription = "Inspect",
+                            tint = colors.primaryText,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 UniOutlinedButton(
