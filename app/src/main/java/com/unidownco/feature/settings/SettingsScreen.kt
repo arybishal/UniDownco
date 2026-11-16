@@ -975,7 +975,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "UniDownco v1.0.3-step1.3.2\n" +
+                            text = "UniDownco v1.1.0\n" +
                                     "Architecture: MVVM Clean Architecture\n" +
                                     "Target SDK: Android 15 (API 35) • Tested on API 36\n" +
                                     "Downloader Engine: Universal Extractor + yt-dlp 0.18.1\n" +
