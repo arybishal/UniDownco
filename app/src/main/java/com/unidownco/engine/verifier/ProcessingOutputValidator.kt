@@ -5,6 +5,8 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.os.Build
 import com.unidownco.core.logging.UniLog
+import com.unidownco.engine.parser.HevcBitstreamParser
+import com.unidownco.engine.parser.Mp4MetadataParser
 import java.io.File
 
 data class ProcessingValidationReport(
@@ -24,7 +26,11 @@ data class ProcessingValidationReport(
     val colorTransfer: String? = null,
     val hasStaticMetadata: Boolean = false,
     val hevcProfile: Int? = null,
-    val errorDetails: String? = null
+    val errorDetails: String? = null,
+    val mp4ColrValid: Boolean = false,
+    val mp4MdcvValid: Boolean = false,
+    val mp4ClliPresent: Boolean = false,
+    val bitstreamMain10Confirmed: Boolean = false
 )
 
 /**
@@ -252,12 +258,63 @@ object ProcessingOutputValidator {
             }
         }
 
-        val isHdr10 = isHevc && (hevcProfile == 2 || bitDepth >= 10) &&
+        // Deep bitstream and ISO container inspection for HEVC/HDR validation
+        var mp4ColrValid = false
+        var mp4MdcvValid = false
+        var mp4ClliPresent = false
+        var bitstreamMain10Confirmed = false
+
+        if (isHevc) {
+            try {
+                val mp4Report = Mp4MetadataParser.parse(outputFile)
+                if (mp4Report.colrBox != null) {
+                    val colr = mp4Report.colrBox
+                    mp4ColrValid = (colr.colorPrimaries == 9 && colr.transferCharacteristics == 16)
+                    if (colorStandard == null && colr.colorPrimaries == 9) {
+                        colorStandard = "bt2020"
+                    }
+                    if (colorTransfer == null && colr.transferCharacteristics == 16) {
+                        colorTransfer = "smpte2084"
+                    }
+                }
+                if (mp4Report.mdcvBox != null) {
+                    mp4MdcvValid = true
+                    hasStaticMetadata = true
+                }
+                if (mp4Report.clliBox != null) {
+                    mp4ClliPresent = true
+                }
+                if (mp4Report.isMain10) {
+                    bitstreamMain10Confirmed = true
+                    bitDepth = 10
+                    hevcProfile = 2
+                }
+
+                val hvcCNals = mp4Report.hvcCBox?.nalUnits ?: emptyList()
+                if (hvcCNals.isNotEmpty()) {
+                    val bitstreamReport = HevcBitstreamParser.parseNalUnits(hvcCNals)
+                    if (bitstreamReport.isMain10) {
+                        bitstreamMain10Confirmed = true
+                        bitDepth = 10
+                        hevcProfile = 2
+                    }
+                    if (bitstreamReport.hasStaticMetadata) {
+                        mp4MdcvValid = true
+                        hasStaticMetadata = true
+                    }
+                }
+            } catch (e: Exception) {
+                UniLog.w(TAG, "Deep container/bitstream inspection exception: ${e.message}")
+            }
+        }
+
+        val isHdr10 = isHevc && (hevcProfile == 2 || bitDepth >= 10 || bitstreamMain10Confirmed) &&
             colorStandard == "bt2020" && colorTransfer == "smpte2084" && hasStaticMetadata
 
         if (expectedHdr10 && !isHdr10) {
             val msg = "Validation failed: Expected genuine 10-bit HDR10 output in ${outputFile.name}, but found: " +
-                "profile=$hevcProfile, bitDepth=$bitDepth, standard=$colorStandard, transfer=$colorTransfer, staticMetadata=$hasStaticMetadata"
+                "profile=$hevcProfile, bitDepth=$bitDepth, standard=$colorStandard, transfer=$colorTransfer, staticMetadata=$hasStaticMetadata, " +
+                "main10Confirmed=$bitstreamMain10Confirmed, mdcvValid=$mp4MdcvValid"
             UniLog.e(TAG, msg)
             return ProcessingValidationReport(
                 isValid = false,
@@ -276,7 +333,11 @@ object ProcessingOutputValidator {
                 colorTransfer = colorTransfer,
                 hasStaticMetadata = hasStaticMetadata,
                 hevcProfile = hevcProfile,
-                errorDetails = msg
+                errorDetails = msg,
+                mp4ColrValid = mp4ColrValid,
+                mp4MdcvValid = mp4MdcvValid,
+                mp4ClliPresent = mp4ClliPresent,
+                bitstreamMain10Confirmed = bitstreamMain10Confirmed
             )
         }
 
@@ -285,7 +346,8 @@ object ProcessingOutputValidator {
         UniLog.i(
             TAG,
             "Validation result for ${outputFile.name}: valid=$isValid, hevc=$isHevc, hdr10=$isHdr10, " +
-            "res=${width}x${height}, rot=${detectedRotation}°, dur=${durationSeconds}s, audio=$hasAudio, decodeProbe=$canDecode, size=${outputFile.length()} bytes"
+            "res=${width}x${height}, rot=${detectedRotation}°, dur=${durationSeconds}s, audio=$hasAudio, decodeProbe=$canDecode, size=${outputFile.length()} bytes, " +
+            "deepValidation=[main10=$bitstreamMain10Confirmed, colr=$mp4ColrValid, mdcv=$mp4MdcvValid, clli=$mp4ClliPresent]"
         )
 
         return ProcessingValidationReport(
@@ -305,7 +367,11 @@ object ProcessingOutputValidator {
             colorTransfer = colorTransfer,
             hasStaticMetadata = hasStaticMetadata,
             hevcProfile = hevcProfile,
-            errorDetails = if (isValid) null else if (!rotationValid) "Rotation mismatch (expected $expectedRotationDegrees°, got $detectedRotation°)" else "Validation checks failed"
+            errorDetails = if (isValid) null else if (!rotationValid) "Rotation mismatch (expected $expectedRotationDegrees°, got $detectedRotation°)" else "Validation checks failed",
+            mp4ColrValid = mp4ColrValid,
+            mp4MdcvValid = mp4MdcvValid,
+            mp4ClliPresent = mp4ClliPresent,
+            bitstreamMain10Confirmed = bitstreamMain10Confirmed
         )
     }
 }

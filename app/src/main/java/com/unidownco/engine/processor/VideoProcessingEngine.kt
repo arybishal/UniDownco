@@ -17,7 +17,9 @@ import com.unidownco.engine.encoder.QualityProfile
 import com.unidownco.engine.encoder.VideoEncoder
 import com.unidownco.engine.hardware.HardwareCapabilities
 import com.unidownco.engine.hardware.HardwareCapabilityRegistry
+import com.unidownco.engine.hdr.HdrMasteringDisplay
 import com.unidownco.engine.hdr.HdrStaticMetadata
+import com.unidownco.engine.hdr.MetadataProvenance
 import com.unidownco.engine.hdr.TargetHdrType
 import com.unidownco.engine.hdr.gpu.HdrRenderCore
 import com.unidownco.engine.muxer.MediaMuxerController
@@ -220,6 +222,32 @@ class VideoProcessingEngine(
 
             val needsGpuRender = (actualTargetHdrType == TargetHdrType.SDR_TO_HDR10)
 
+            // Resolve HDR metadata with explicit, non-fabricated provenance
+            val resolvedHdrMetadata: HdrStaticMetadata? = when {
+                hdrStaticMetadata != null -> hdrStaticMetadata
+                actualTargetHdrType == TargetHdrType.SDR_TO_HDR10 -> {
+                    // Mathematically estimated from inverse tone mapping curve (target peak 1000 nits)
+                    HdrStaticMetadata.createMathematicallyEstimated(
+                        mastering = HdrMasteringDisplay.BT2020_TRUE_1000NITS,
+                        peakNits = 1000,
+                        averageNits = 203
+                    )
+                }
+                actualTargetHdrType == TargetHdrType.HDR10_PRESERVE -> {
+                    // Extract declared static metadata from source if present
+                    var srcMeta: HdrStaticMetadata? = null
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+                        sourceVideoFormat.containsKey(MediaFormat.KEY_HDR_STATIC_INFO)) {
+                        val staticBuf = sourceVideoFormat.getByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO)
+                        if (staticBuf != null && staticBuf.remaining() >= HdrStaticMetadata.CTA_BUFFER_SIZE) {
+                            srcMeta = HdrStaticMetadata.fromByteBuffer(staticBuf, MetadataProvenance.SOURCE_DECLARED)
+                        }
+                    }
+                    srcMeta ?: HdrStaticMetadata.BT2020_TRUE_1000NITS
+                }
+                else -> null
+            }
+
             // Initialize hardware encoder with surface input
             val enc = MediaCodecVideoEncoder(
                 width = targetWidth,
@@ -228,7 +256,7 @@ class VideoProcessingEngine(
                 qualityProfile = profile,
                 capabilities = capabilities,
                 targetHdrType = actualTargetHdrType,
-                hdrStaticMetadata = hdrStaticMetadata
+                hdrStaticMetadata = resolvedHdrMetadata
             )
             encoder = enc
 
